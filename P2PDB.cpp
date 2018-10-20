@@ -1,60 +1,4 @@
-#include <iostream>
-#include <string>
-#include <unordered_set>
-#include <unordered_map>
-#include <vector>
-#include <math.h>
-#include <stdlib.h>
-
-using namespace std;
-
-const int chunk_size = 131072;
-
-typedef string FILE_NAME;
-typedef int CHUNK_ID;
-typedef string PEER_IP;
-typedef vector<PEER_IP> PEER_IP_LIST;
-typedef unordered_map<CHUNK_ID, PEER_IP_LIST> CHUNK_IP_MAP;
-typedef unordered_map<FILE_NAME, CHUNK_IP_MAP> FILE_KNOWLEDGE_BASE;
-
-typedef unordered_set<CHUNK_ID> CHUNK_ID_LIST;
-typedef unordered_map<FILE_NAME, CHUNK_ID_LIST> FILE_CHUNK_MAP;
-typedef unordered_map<PEER_IP, FILE_CHUNK_MAP> PEER_KNOWLEDGE_BASE; 
-
-typedef int FILE_SIZE;
-
-struct FileInfo {
-    FILE_NAME fileName;
-    FILE_SIZE fileSize;
-    PEER_IP initialSeeder;
-};
-typedef unordered_map<FILE_NAME, FileInfo> FILE_DETAILS_MAP;
-
-class Knowledge_Base{
-    private:
-    FILE_KNOWLEDGE_BASE File_List;
-    PEER_KNOWLEDGE_BASE Peer_List;
-    FILE_DETAILS_MAP fdm;
-
-    void removeFileFromFileList(FILE_NAME fileName);
-    void removeFileFromFDM(FILE_NAME fileName);
-    void removePeerFromFileList(FILE_NAME fileName, CHUNK_ID_LIST chunkIDList, PEER_IP peerIP);
-
-
-    public:
-
-    void createNewPeer(string ipAddr);
-    void removePeer(string ipAddr);
-
-    string listAllFiles();
-    string downloadFile(string fileName);
-    string getFileInfo(string fileName);
-    void uploadNewFile(string ipAddr, string fileName, int fileSize);   
-    void updatePeerFileChunkStatus(string ipAddr, string fileName, vector<int> chunkIPList);
-
-    void printEverything();    
-
-};
+#include "P2PDB.h"
 
 void Knowledge_Base::createNewPeer(string ipAddr){
     return;
@@ -75,6 +19,7 @@ void Knowledge_Base::removePeerFromFileList(FILE_NAME fileName, CHUNK_ID_LIST ch
         for (int i=0; i<peerIPList.size(); i++){ // search and remove peer
             if (peerIPList[i] == peerIP){
                 peerIPList.erase(peerIPList.begin()+i);
+                break;
             }
         }
         if (peerIPList.empty()){ // the only peer holding a chunk has left, remove the whole file
@@ -86,6 +31,7 @@ void Knowledge_Base::removePeerFromFileList(FILE_NAME fileName, CHUNK_ID_LIST ch
 }
 
 void Knowledge_Base::removePeer(string ipAddr){
+    // user information from peer list to remove in file list
     PEER_KNOWLEDGE_BASE::const_iterator itr = Peer_List.find(ipAddr);
     if (itr != Peer_List.end()){
         FILE_CHUNK_MAP fileInfoToRemove = itr->second;
@@ -95,6 +41,7 @@ void Knowledge_Base::removePeer(string ipAddr){
             removePeerFromFileList(fileName, chunkIdLst, ipAddr);
         }
     }
+    // remove user from peer list
     Peer_List.erase(ipAddr);
 }
 
@@ -105,7 +52,7 @@ string Knowledge_Base::listAllFiles(){
     for(auto &itr: fdm){
         returnString += to_string(i) + ".   ";
         returnString += itr.first + "   ";
-        FileInfo fi = itr.second;
+        FileInfo &fi = itr.second;
         returnString += to_string(fi.fileSize) + "  ";
         returnString += fi.initialSeeder + "    \n";
         i++;
@@ -124,12 +71,12 @@ string Knowledge_Base::downloadFile(string fileName){
     int i=1;
     
     srand (time(NULL));
-    for (auto &itr: File_List[fileName]){
+    for (auto itr: File_List[fileName]){
         returnStr += to_string(itr.first) + " ";    //chunk id
         randomNo = rand() % itr.second.size();
         returnStr += itr.second[randomNo] + " "; // random peer IP
     }
-    
+    returnStr += "\r\n";
     return returnStr;
 }
 
@@ -159,11 +106,15 @@ void Knowledge_Base::uploadNewFile(string ipAddr, string fileName, int fileSize)
     }
 
     // update fdm
-    FileInfo fi;
-    fi.fileName = fileName;
-    fi.fileSize = fileSize;
-    fi.initialSeeder = ipAddr;
-    fdm[fileName] = fi;
+    FILE_DETAILS_MAP::const_iterator fdmItr = fdm.find(fileName);
+    if (fdmItr == fdm.end()){
+        FileInfo fi;
+        fi.fileName = fileName;
+        fi.fileSize = fileSize;
+        fi.initialSeeder = ipAddr;
+        fdm[fileName] = fi;
+    }    
+    
 }
 
 void Knowledge_Base::printEverything(){
@@ -182,23 +133,34 @@ void Knowledge_Base::printEverything(){
     }
 }
 
-void Knowledge_Base::updatePeerFileChunkStatus(string ipAddr, string fileName, vector<int> chunkIPList){
+void Knowledge_Base::updatePeerFileChunkStatus(string ipAddr, string fileName, vector<int> chunkIDListToAdd){
     // update Peer List
-    CHUNK_ID_LIST &chunkIdList = Peer_List[ipAddr][fileName];
-    for (auto i: chunkIPList){
-        chunkIdList.insert(i);
+    CHUNK_ID_LIST &chunkIDList = Peer_List[ipAddr][fileName];
+    for (auto i: chunkIDListToAdd){
+        chunkIDList.insert(i);
     }
 
     //update File List
     CHUNK_IP_MAP &chunkIPMap = File_List[fileName];
-    for (auto i: chunkIPList){
+    for (auto i: chunkIDListToAdd){
         chunkIPMap[i].push_back(ipAddr);
     }
 }
 
+bool Knowledge_Base::isEmpty(){
+    return fdm.empty();
+}
+
+bool Knowledge_Base::containsFile(string fileName){
+    FILE_DETAILS_MAP::const_iterator itr = fdm.find(fileName);
+    return itr != fdm.end();
+}
+
+/*
 int main(int argc, char const *argv[])
 {
     Knowledge_Base KB;
+    cout << KB.listAllFiles();
     KB.uploadNewFile("1.1.1.1", "Test.txt", 1000000);
     cout << KB.listAllFiles();
     cout << KB.downloadFile("Test.txt") << endl;
@@ -213,12 +175,20 @@ int main(int argc, char const *argv[])
     KB.updatePeerFileChunkStatus("129.52.31.221", "Test.txt", temp);
     cout << KB.downloadFile("Test.txt") << endl;
     //KB.printEverything();
+    cout << KB.downloadFile("anotherText.xee") << endl;
     temp.clear();
     temp.push_back(1);
     KB.updatePeerFileChunkStatus("1.1.1.1", "anotherText.xee", temp);
+    cout << KB.downloadFile("anotherText.xee") << endl;
 cout << KB.listAllFiles();
+KB.printEverything();
     KB.removePeer("129.52.31.221");
-    //KB.printEverything();
+    cout << KB.downloadFile("anotherText.xee") << endl;
+    KB.printEverything();
     cout << KB.listAllFiles();
+    KB.removePeer("1.1.1.1");
+    cout << KB.listAllFiles();
+    KB.printEverything();
     return 0;
 }
+*/
