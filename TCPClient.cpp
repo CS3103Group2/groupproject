@@ -115,7 +115,7 @@ string TCPClient::read()
   	char buffer[1] = {};
   	string reply;
   	while (buffer[0] != '\n') {
-    		if( recv(sock , buffer , sizeof(buffer) , 0) < 0)
+    		if(recv(sock , buffer , sizeof(buffer) , 0) < 0)
     		{
       			cout << "receive failed!" << endl;
 			return nullptr;
