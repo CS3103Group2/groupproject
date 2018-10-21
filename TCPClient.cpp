@@ -1,42 +1,16 @@
-#include<iostream>    //cout
-#include<stdio.h> //printf
-#include<string.h>    //strlen
-#include<string>  //string
-#include<sys/socket.h>    //socket
-#include<arpa/inet.h> //inet_addr
-#include<netdb.h> //hostent
 
-using namespace std;
+#include "TCPClient.h"
 
-/**
-    TCP Client class
-*/
-class tcp_client
-{
-private:
-    int sock;
-    std::string address;
-    int port;
-    struct sockaddr_in server;
-
-public:
-    tcp_client();
-    bool conn(string, int);
-    bool send_data(string data);
-    string receive(int);
-};
-
-tcp_client::tcp_client()
+TCPClient::TCPClient()
 {
     sock = -1;
     port = 0;
     address = "";
 }
-
 /**
     Connect to a host on a certain port number
 */
-bool tcp_client::conn(string address , int port)
+int TCPClient::connect(string address , int port)
 {
     //create socket if it is not already created
     if(sock == -1)
@@ -46,11 +20,11 @@ bool tcp_client::conn(string address , int port)
         if (sock == -1)
         {
             perror("Could not create socket");
+            return -1;
         }
 
-        cout<<"Socket created\n";
+        cout << "Socket created\n";
     }
-    else    {   /* OK , nothing */  }
 
     //setup address structure
     if(inet_addr(address.c_str()) == -1)
@@ -63,9 +37,9 @@ bool tcp_client::conn(string address , int port)
         {
             //gethostbyname failed
             herror("gethostbyname");
-            cout<<"Failed to resolve hostname\n";
+            cout << "Failed to resolve hostname\n";
 
-            return false;
+            return -1;
         }
 
         //Cast the h_addr_list to in_addr , since h_addr_list also has the ip address in long format only
@@ -83,8 +57,7 @@ bool tcp_client::conn(string address , int port)
     }
 
     //plain ip address
-    else
-    {
+    else {
         server.sin_addr.s_addr = inet_addr( address.c_str() );
     }
 
@@ -95,17 +68,17 @@ bool tcp_client::conn(string address , int port)
     if (connect(sock , (struct sockaddr *)&server , sizeof(server)) < 0)
     {
         perror("connect failed. Error");
-        return 1;
+        return -1;
     }
 
     cout<<"Connected\n";
-    return true;
+    return sock;
 }
 
 /**
     Send data to the connected host
 */
-bool tcp_client::send_data(string data)
+bool TCPClient::send_data(string data)
 {
     //Send some data
     if( send(sock , data.c_str() , strlen( data.c_str() ) , 0) < 0)
@@ -121,17 +94,38 @@ bool tcp_client::send_data(string data)
 /**
     Receive data from the connected host
 */
-string tcp_client::receive(int size=512)
+string TCPClient::receive(int size)
 {
-    char buffer[size];
-    string reply;
+  	char buffer[size];
+	memset(&buffer[0], 0, sizeof(buffer));
 
-    //Receive a reply from the server
-    if( recv(sock , buffer , sizeof(buffer) , 0) < 0)
-    {
-        puts("recv failed");
-    }
+  	string reply;
+	if( recv(sock , buffer , size, 0) < 0)
+  	{
+	    	cout << "receive failed!" << endl;
+		return nullptr;
+  	}
+	buffer[size-1]='\0';
+  	reply = buffer;
+  	return reply;
+}
 
-    reply = buffer;
-    return reply;
+string TCPClient::read()
+{
+  	char buffer[1] = {};
+  	string reply;
+  	while (buffer[0] != '\n') {
+    		if( recv(sock , buffer , sizeof(buffer) , 0) < 0)
+    		{
+      			cout << "receive failed!" << endl;
+			return nullptr;
+    		}
+		reply += buffer[0];
+	}
+	return reply;
+}
+
+void TCPClient::exit()
+{
+    close( sock );
 }
