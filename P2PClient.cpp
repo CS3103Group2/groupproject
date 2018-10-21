@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <unordered_map>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -16,6 +17,7 @@
 using namespace std;
 
 string p2pserver_address;
+typedef unordered_map<int, string> FILE_IPADDR_MAP;
 
 void displayOptions(){
     cout << "\n*-*-*-*-*-*-*-*-*-* OPTIONS *-*-*-*-*-*-*-*-*-*-*-*" << endl;
@@ -44,7 +46,7 @@ size_t find_Nth_occurence(const string &str, unsigned N, const string &find)
     }
 
     size_t pos, from = 0;
-    unsigned i = ;
+    unsigned i = 0;
 
     while ( i < N )
     {
@@ -61,18 +63,17 @@ size_t find_Nth_occurence(const string &str, unsigned N, const string &find)
     return pos;
 }
 
-void connectToServer(TCPClient tcp_client)
+int connectToServer(TCPClient tcp_client)
 {
     int sock = -1;
     int count = 0;
     string response = "y";
     do{
-
-        sock = tcp_client.connect(p2pserver_address, PORT);
+        sock = tcp_client.connectTo(p2pserver_address, PORT);
         count++;
 
         if (count == 5) {
-            cout << "\nUnable to connect to P2P Server. Do you want to try again? [y/n]";
+            cout << "\nUnable to connectTo to P2P Server. Do you want to try again? [y/n]";
             getline(cin, response);
             count = 0;
         }
@@ -125,7 +126,7 @@ int downloadFile()
     int i, j, k, l, server_sock, num_of_chunks, filesize, chunkid, count;
     string filename, query, reply, chunkdetails, ipaddr;
     TCPClient server_connection;
-    typedef unordered_map<int, string> FILE_DETAILS_MAP;
+    FILE_IPADDR_MAP file_map;
 
     cout << "\nEnter file to download: ";
     getline(cin, filename);
@@ -138,7 +139,7 @@ int downloadFile()
     server_connection.send_data(query);
     reply = server_connection.receive();
 
-    if(reply[0] == "0"){
+    if(reply[0] == '0'){
         cout << "\nFile is not available. Please choose another file to download." << endl;
         return -1;
     } else {
@@ -157,9 +158,9 @@ int downloadFile()
         l = find_Nth_occurence(" ", count + 1, chunkdetails);
 
         for(i = 0; i < num_of_chunks; i++){
-            chunkid = stoi(chunkdetails[j]);
+            chunkid = stoi(chunkdetails.substr(j, k - j - 1));
             ipaddr = chunkdetails.substr(k, l - k);
-            FILE_DETAILS_MAP.insert(make_pair<int,string>(chunkid, ipaddr));
+            file_map.insert(make_pair<int,string>(chunkid, ipaddr));
             if(i != (num_of_chunks - 1)) {
                 j = l + 1;
                 count += 2;
@@ -169,8 +170,8 @@ int downloadFile()
         }
     }
 
-    while(!FILE_DETAILS_MAP.empty()){
-        int count
+    while(!file_map.empty()){
+        int count;
 
 
     }
@@ -204,9 +205,9 @@ int main()
                 uploadFile();
                 break;
             default:
-                cout << "Invalid option. Please try again."; << endl;
+                cout << "Invalid option. Please try again." << endl;
         }
 
-    } while (op ! = 5);
+    } while (op != 5);
 
 }

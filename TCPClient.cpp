@@ -1,4 +1,3 @@
-
 #include "TCPClient.h"
 
 TCPClient::TCPClient()
@@ -10,7 +9,7 @@ TCPClient::TCPClient()
 /**
     Connect to a host on a certain port number
 */
-int TCPClient::connect(string address , int port)
+int TCPClient::connectTo(string address , int port)
 {
     //create socket if it is not already created
     if(sock == -1)
@@ -65,7 +64,7 @@ int TCPClient::connect(string address , int port)
     server.sin_port = htons( port );
 
     //Connect to remote server
-    if (connect(sock , (struct sockaddr *)&server , sizeof(server)) < 0)
+    if (connect(sock, (struct sockaddr *)&server , sizeof(server)) < 0)
     {
         perror("connect failed. Error");
         return -1;
@@ -94,18 +93,18 @@ bool TCPClient::send_data(string data)
 /**
     Receive data from the connected host
 */
-string TCPClient::receive(int size)
+string TCPClient::receive()
 {
-  	char buffer[size];
+  	char buffer[SIZE];
 	memset(&buffer[0], 0, sizeof(buffer));
 
   	string reply;
-	if( recv(sock , buffer , size, 0) < 0)
+	if( recv(sock, buffer, SIZE, 0) < 0)
   	{
 	    	cout << "receive failed!" << endl;
-		return nullptr;
+		return "";
   	}
-	buffer[size-1]='\0';
+	buffer[SIZE - 1]='\0';
   	reply = buffer;
   	return reply;
 }
@@ -118,7 +117,7 @@ string TCPClient::read()
     		if(recv(sock , buffer , sizeof(buffer) , 0) < 0)
     		{
       			cout << "receive failed!" << endl;
-			return nullptr;
+			return "";
     		}
 		reply += buffer[0];
 	}
@@ -127,5 +126,5 @@ string TCPClient::read()
 
 void TCPClient::exit()
 {
-    close( sock );
+    close(sock);
 }

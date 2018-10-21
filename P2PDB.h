@@ -21,7 +21,7 @@ typedef unordered_map<FILE_NAME, CHUNK_IP_MAP> FILE_KNOWLEDGE_BASE;
 
 typedef unordered_set<CHUNK_ID> CHUNK_ID_LIST;
 typedef unordered_map<FILE_NAME, CHUNK_ID_LIST> FILE_CHUNK_MAP;
-typedef unordered_map<PEER_IP, FILE_CHUNK_MAP> PEER_KNOWLEDGE_BASE; 
+typedef unordered_map<PEER_IP, FILE_CHUNK_MAP> PEER_KNOWLEDGE_BASE;
 
 typedef int FILE_SIZE;
 
@@ -57,11 +57,11 @@ class Knowledge_Base{
 
     string listAllFiles();
     string getFileInfo(string fileName);
-    string downloadFile(string fileName);    
-    void uploadNewFile(string ipAddr, string fileName, int fileSize);   
+    string downloadFile(string fileName);
+    void uploadNewFile(string ipAddr, string fileName, int fileSize);
     void updatePeerFileChunkStatus(string ipAddr, string fileName, vector<int> chunkIDList);
 
-    void printEverything();   
+    void printEverything();
 
     bool isEmpty();
     bool containsFile(string fileName);
