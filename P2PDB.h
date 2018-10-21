@@ -6,6 +6,7 @@
 #include <vector>
 #include <math.h>
 #include <stdlib.h>
+#include <mutex>
 
 using namespace std;
 
@@ -37,9 +38,18 @@ class Knowledge_Base{
     PEER_KNOWLEDGE_BASE Peer_List;
     FILE_DETAILS_MAP fdm;
 
+    int readcount = 0;
+    int writecount = 0;
+    mutex rmutex, wmutex, readTry, resource; //(initial value = 1)
+
+
     void removeFileFromFileList(FILE_NAME fileName);
     void removeFileFromFDM(FILE_NAME fileName);
     void removePeerFromFileList(FILE_NAME fileName, CHUNK_ID_LIST chunkIDList, PEER_IP peerIP);
+    void readerLock();
+    void readerUnlock();
+    void writerLock();
+    void writerUnlock();
 
     public:
     void createNewPeer(string ipAddr);

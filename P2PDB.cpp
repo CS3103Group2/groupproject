@@ -1,5 +1,48 @@
 #include "P2PDB.h"
 
+// taken off wikipedia, hope this works
+void Knowledge_Base::readerLock(){
+    readTry.lock();                 //Indicate a reader is trying to enter
+    rmutex.lock();                  //lock entry section to avoid race condition with other readers
+    readcount++;                 //report yourself as a reader
+    if (readcount == 1) {        //checks if you are first reader
+        resource.lock();            //if you are first reader, lock  the resource
+    }             
+    rmutex.unlock();                  //release entry section for other readers
+    readTry.unlock();                 //indicate you are done trying to access the resource
+}
+
+void Knowledge_Base::readerUnlock(){
+    rmutex.lock();                  //reserve exit section - avoids race condition with readers
+    readcount--;                 //indicate you're leaving
+    if (readcount == 0) {         //checks if you are last reader leaving
+        resource.unlock();              //if last, you must release the locked resource
+    }
+    rmutex.unlock();                  //release exit section for other readers
+}
+
+void Knowledge_Base::writerLock(){
+    wmutex.lock();                  //reserve entry section for writers - avoids race conditions
+    writecount++;                //report yourself as a writer entering
+    if (writecount == 1) {        //checks if you're first writer
+        readTry.lock();               //if you're first, then you must lock the readers out. Prevent them from trying to enter CS
+    }
+    wmutex.unlock();                  //release entry section
+    
+    resource.lock();                //reserve the resource for yourself - prevents other writers from simultaneously editing the shared resource
+}
+void Knowledge_Base::writerUnlock(){
+    resource.unlock();                //release file
+    
+    wmutex.lock();                  //reserve exit section
+    writecount--;                //indicate you're leaving
+    if (writecount == 0) {        //checks if you're the last writer
+        readTry.unlock();               //if you're last writer, you must unlock the readers. Allows them to try enter CS for reading
+    }
+    wmutex.unlock();                  //release exit section
+}
+
+
 void Knowledge_Base::createNewPeer(string ipAddr){
     return;
 }
@@ -31,6 +74,8 @@ void Knowledge_Base::removePeerFromFileList(FILE_NAME fileName, CHUNK_ID_LIST ch
 }
 
 void Knowledge_Base::removePeer(string ipAddr){
+
+    writerLock();
     // user information from peer list to remove in file list
     PEER_KNOWLEDGE_BASE::const_iterator itr = Peer_List.find(ipAddr);
     if (itr != Peer_List.end()){
@@ -43,10 +88,15 @@ void Knowledge_Base::removePeer(string ipAddr){
     }
     // remove user from peer list
     Peer_List.erase(ipAddr);
+
+    writerUnlock();
 }
 
 string Knowledge_Base::listAllFiles(){
     string returnString;
+
+    readerLock();
+
     returnString += "     File Name      File Size      Initial Seeder\n";
     int i = 1;
     for(auto &itr: fdm){
@@ -58,11 +108,17 @@ string Knowledge_Base::listAllFiles(){
         i++;
     }
     returnString += "\r\n";
+
+    readerUnlock();
+
     return returnString;
 }
 
 string Knowledge_Base::downloadFile(string fileName){
+
     string returnStr;
+
+    readerLock();
 
     returnStr += fileName + " "; // file name
     returnStr += to_string(fdm[fileName].fileSize) + " "; // file size
@@ -77,6 +133,9 @@ string Knowledge_Base::downloadFile(string fileName){
         returnStr += itr.second[randomNo] + " "; // random peer IP
     }
     returnStr += "\r\n";
+
+    readerUnlock();
+
     return returnStr;
 }
 
@@ -84,6 +143,8 @@ string Knowledge_Base::getFileInfo(FILE_NAME fileName){
     return "";
 }
 void Knowledge_Base::uploadNewFile(string ipAddr, string fileName, int fileSize){
+
+    writerLock();
     // update peer list
     FILE_CHUNK_MAP &userFileChunkMap = Peer_List[ipAddr];
     CHUNK_ID_LIST fullChunkIDList;
@@ -114,10 +175,15 @@ void Knowledge_Base::uploadNewFile(string ipAddr, string fileName, int fileSize)
         fi.initialSeeder = ipAddr;
         fdm[fileName] = fi;
     }    
+
+    writerUnlock();
     
 }
 
 void Knowledge_Base::printEverything(){
+    
+    readerLock();
+
     cout << "file list size = " << File_List.size() << endl;
     for (auto &itr: File_List){
         cout << "file name: " << itr.first << endl;
@@ -131,9 +197,13 @@ void Knowledge_Base::printEverything(){
         }
         cout << endl;
     }
+
+    readerUnlock();
 }
 
 void Knowledge_Base::updatePeerFileChunkStatus(string ipAddr, string fileName, vector<int> chunkIDListToAdd){
+    writerLock();
+
     // update Peer List
     CHUNK_ID_LIST &chunkIDList = Peer_List[ipAddr][fileName];
     for (auto i: chunkIDListToAdd){
@@ -145,15 +215,30 @@ void Knowledge_Base::updatePeerFileChunkStatus(string ipAddr, string fileName, v
     for (auto i: chunkIDListToAdd){
         chunkIPMap[i].push_back(ipAddr);
     }
+
+    writerUnlock();
 }
 
 bool Knowledge_Base::isEmpty(){
-    return fdm.empty();
+    bool result;
+    readerLock();
+
+    result = fdm.empty();
+
+    readerUnlock();
+    return result;
 }
 
 bool Knowledge_Base::containsFile(string fileName){
+    bool result;
+    readerLock();
+
     FILE_DETAILS_MAP::const_iterator itr = fdm.find(fileName);
-    return itr != fdm.end();
+    result = (itr != fdm.end());
+
+    readerUnlock();
+
+    return result;
 }
 
 /*
