@@ -7,9 +7,10 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include<iostream>    //cout
-#include<string>  //string
-#include<arpa/inet.h> //inet_addr
+#include <iostream>    //cout
+#include <string>  //string
+#include <arpa/inet.h> //inet_addr
+#include <fstream>
 
 
 #define PORT 15000
@@ -30,7 +31,7 @@ public:
   TCPClient();
   int connectTo(string address, int port);
   bool send_data(string data);
-  string receive();
+  int receiveAndWriteToFile(string filepath);
   string read();
   void exit();
 };

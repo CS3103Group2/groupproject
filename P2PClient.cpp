@@ -20,6 +20,7 @@ typedef unordered_map<int, string> FILE_IPADDR_MAP;
 
 string p2pserver_address;
 FILE_IPADDR_MAP file_map;
+mutex mutx;
 
 void displayOptions(){
     cout << "\n*-*-*-*-*-*-*-*-*-* OPTIONS *-*-*-*-*-*-*-*-*-*-*-*" << endl;
@@ -98,7 +99,7 @@ int connectToClient(TCPClient tcp_client, string ip_addr)
         if (count == 5) {
             cout << "\nUnable to connectTo to " << ip_addr << " client.";
             count = 0;
-            break;
+            return -1;
         }
 
     } while(sock == -1);
@@ -125,46 +126,122 @@ string generate_query(int op, string input)
         case 4: // Upload a file
             query = "";
             break;
+        case 7:
+            query = "7 " + input;
         default:
             query = "";
     }
 
-    return input;
+    return query;
 
 }
 
-int handleDownloadFromPeer(mutex mutx, string filename){
-    int chunkid;
-    string ipaddr;
-    TCPClient peerClient;
+int getUpdateFromServer(int chunkid){
+
+    string query, reply;
+    TCPClient server_connection;
+
+    if(connectToServer(server_connection) == -1){
+        return -1;
+    }
+
+    query = generate_query(7, to_string(chunkid));
+    server_connection.send_data(query);
+    reply = server_connection.read();
+    server_connection.exit();
 
     mutx.lock();
-    auto random_pair = next(begin(file_map), rand_between(0, file_map.size()));
-    chunkid = random_pair.first;
-    ipaddr = random_pair.second;
+    file_map.insert((pair<int,string>) make_pair(chunkid, reply));
+    mutx.unlock();
+
+    return 0;
+}
+
+void handleDownloadFromPeer(string filename){
+    int chunkid, status;
+    string ipaddr;
+    TCPClient peerClient;
+    string reply;
+
+    mutx.lock();
+    auto random_pair = next(begin(file_map), (rand() % file_map.size()));
+    chunkid = random_pair->first;
+    ipaddr = random_pair->second;
     file_map.erase(chunkid);
     mutx.unlock();
 
     if(connectToClient(peerClient, ipaddr) == -1){
-        //TODO: Add back pair
+        //Add pair back into filemap
+        mutx.lock();
+        file_map.insert((pair<int,string>) make_pair(chunkid, ipaddr));
+        mutx.unlock();
     }
 
-    peerClient.send_data(to_string(filename + " " + chunkid));
+    peerClient.send_data(filename + " " + to_string(chunkid));
+    reply = peerClient.read();
 
+    if(reply[0] == '0') {
+        status = getUpdateFromServer(chunkid);
+    } else if (peerClient.receiveAndWriteToFile(filename + "/" + to_string(chunkid)) < 0){
+        status = getUpdateFromServer(chunkid);
+    }
+    peerClient.exit();
 
+    if(status < 0){
+        mutx.lock();
+        file_map.insert((pair<int,string>)make_pair(chunkid, ipaddr));
+        mutx.unlock();
+    }
 }
 
-int downloadFileFromPeers(string filename){
+
+int mergeAllFiles(string filename, int num_of_chunks){
+
+    int i;
+    ifstream read;
+    ofstream finalout;
+    string temp;
+
+    finalout.open(filename);
+
+    if(!finalout)
+    {
+        cout << "Oops something went wrong with the file." << endl;
+    }
+
+    for(i = 0; i < num_of_chunks; i++)
+    {
+        try {
+          read.open(filename + "/" + to_string(i));
+        }
+        catch (ios_base::failure& e) {
+          cerr << e.what() << '\n';
+        }
+        while(read.eof() == 0)
+        {
+            getline(read, temp);
+            finalout << temp;
+        }
+        finalout << "\n";
+        read.close();
+        read.clear();
+    }
+
+    finalout.close();
+    return 0;
+}
+
+int downloadFileFromPeers(string filename, int num_of_chunks){
 
     int count, i;
     mutex mutx;
 
     while(!file_map.empty()){
-        thread thread_obj1(handleDownloadFromPeer, mutx, filename);
-        thread thread_obj2(handleDownloadFromPeer, mutx, filename);
-        thread thread_obj3(handleDownloadFromPeer, mutx, filename);
-        thread thread_obj4(handleDownloadFromPeer, mutx, filename);
-        thread thread_obj5(handleDownloadFromPeer, mutx, filename);
+        thread thread_obj1(handleDownloadFromPeer, filename);
+        thread thread_obj2(handleDownloadFromPeer, filename);
+        thread thread_obj3(handleDownloadFromPeer, filename);
+        thread thread_obj4(handleDownloadFromPeer, filename);
+        thread thread_obj5(handleDownloadFromPeer, filename);
 
         thread_obj1.join();
         thread_obj2.join();
@@ -173,7 +250,9 @@ int downloadFileFromPeers(string filename){
         thread_obj5.join();
     }
 
+    mergeAllFiles(filename, num_of_chunks);
 
+    cout << "Download successful!" << endl;
 }
 
 /**************** COMMANDS  ***********************
@@ -205,9 +284,9 @@ int downloadFile()
     query = generate_query(3, filename);
     server_connection.send_data(query);
     reply = server_connection.read();
-    server_connection.close();
+    server_connection.exit();
 
-    if(reply[0] == '0' || reply[0] == ''){
+    if(reply[0] == '0' || reply[0] == NULL){
         cout << "\nFile is not available. Please choose another file to download." << endl;
         return -1;
     } else {
@@ -229,7 +308,7 @@ int downloadFile()
         for(i = 0; i < num_of_chunks; i++){
             chunkid = stoi(chunkdetails.substr(j, k - j - 1));
             ipaddr = chunkdetails.substr(k, l - k);
-            file_map.insert(make_pair<int,string>(chunkid, ipaddr));
+            file_map.insert((pair<int,string>) make_pair(chunkid, ipaddr));
             if(i != (num_of_chunks - 1)) {
                 j = l + 1;
                 count += 2;
@@ -239,7 +318,7 @@ int downloadFile()
         }
     }
 
-    downloadFileFromPeers(filename);
+    downloadFileFromPeers(filename, num_of_chunks);
 }
 
 int uploadFile(){

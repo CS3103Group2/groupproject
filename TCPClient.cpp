@@ -80,7 +80,7 @@ int TCPClient::connectTo(string address , int port)
 bool TCPClient::send_data(string data)
 {
     //Send some data
-    if( send(sock , data.c_str() , strlen( data.c_str() ) , 0) < 0)
+    if(send(sock , data.c_str() , strlen(data.c_str() ) , 0) < 0)
     {
         perror("Send failed : ");
         return false;
@@ -93,20 +93,19 @@ bool TCPClient::send_data(string data)
 /**
     Receive data from the connected host
 */
-string TCPClient::receive()
+int TCPClient::receiveAndWriteToFile(string filepath)
 {
-  	char buffer[SIZE];
-	memset(&buffer[0], 0, sizeof(buffer));
+    char buffer[SIZE];
+    int bytes_read;
+    ofstream file(filepath.c_str(), ios::out|ios::binary);
+    do {
+         bytes_read = recv(sock, buffer, sizeof(buffer), 0);
+         if (bytes_read > 0) {
+             file.write(buffer, bytes_read);
+         }
+    } while (bytes_read > 0);
 
-  	string reply;
-	if( recv(sock, buffer, SIZE, 0) < 0)
-  	{
-	    	cout << "receive failed!" << endl;
-		return "";
-  	}
-	buffer[SIZE - 1]='\0';
-  	reply = buffer;
-  	return reply;
+    return 0;
 }
 
 string TCPClient::read()
@@ -114,8 +113,7 @@ string TCPClient::read()
   	char buffer[1] = {};
   	string reply;
   	while (buffer[0] != '\n') {
-    		if(recv(sock , buffer , sizeof(buffer) , 0) < 0)
-            {
+    		if(recv(sock , buffer , sizeof(buffer) , 0) < 0){
                 cout << "receive failed!" << endl;
 			    return "";
     		}

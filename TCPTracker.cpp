@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/types.h> 
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string.h>
@@ -63,6 +63,7 @@ void handleUpdate(string clientAddr, vector<string> incomingMsg, string &respons
     response = "1 \n";
 }
 
+
 void processIncomingMessage(string message, string &response, string clientAddr){
 
     regex ws_re("\\s+");
@@ -78,10 +79,12 @@ void processIncomingMessage(string message, string &response, string clientAddr)
     } else if (result[0] == "4"){
         handleUpload(clientAddr, result[1], stoi(result[2]), response);
     } else if (result[0] == "5"){
-        handleExit(clientAddr, response);            
+        handleExit(clientAddr, response);
     } else if (result[0] == "6"){ // update peer's chunk status
         handleUpdate(clientAddr, result, response);
-    } else{
+    // } else if(result[0] == "7"){
+    //     handleGetUpdate(clientAddr, result, response);
+    } else {
         response = "Action is not defined!\n";
     }
 }
@@ -108,20 +111,20 @@ void threadHandler(int sock, string clientAddr){
 }
 
 
-main(int argc, char const *argv[])
+int main(int argc, char const *argv[])
 {
     int serverSock, cnxnSock;
     string str;
 	struct sockaddr_in serverAddress;
     struct sockaddr_in clientAddress;
-    
+
     serverSock=socket(AF_INET,SOCK_STREAM,0);
  	memset(&serverAddress,0,sizeof(serverAddress));
 	serverAddress.sin_family=AF_INET;
 	serverAddress.sin_addr.s_addr=htonl(INADDR_ANY);
 	serverAddress.sin_port=htons(P2PPort);
 	bind(serverSock,(struct sockaddr *)&serverAddress, sizeof(serverAddress));
-    
+
     listen(serverSock,1);
 
     socklen_t sosize  = sizeof(clientAddress);
@@ -129,7 +132,7 @@ main(int argc, char const *argv[])
     while (1){
         cnxnSock = accept(serverSock,(struct sockaddr*)&clientAddress,&sosize);
         cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
-        thread slave(threadHandler, cnxnSock, inet_ntoa(clientAddress.sin_addr));   
+        thread slave(threadHandler, cnxnSock, inet_ntoa(clientAddress.sin_addr));
         slave.detach();
     }
 
