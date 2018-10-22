@@ -12,12 +12,14 @@
 #include <netdb.h>
 #include <netdb.h>
 #include <vector>
+#include <thread>
 #include "TCPClient.h"
 
 using namespace std;
+typedef unordered_map<int, string> FILE_IPADDR_MAP;
 
 string p2pserver_address;
-typedef unordered_map<int, string> FILE_IPADDR_MAP;
+FILE_IPADDR_MAP file_map;
 
 void displayOptions(){
     cout << "\n*-*-*-*-*-*-*-*-*-* OPTIONS *-*-*-*-*-*-*-*-*-*-*-*" << endl;
@@ -84,6 +86,29 @@ int connectToServer(TCPClient tcp_client)
 
 }
 
+
+int connectToClient(TCPClient tcp_client, string ip_addr)
+{
+    int sock = -1;
+    int count = 0;
+    do{
+        sock = tcp_client.connectTo(ip_addr, PORT);
+        count++;
+
+        if (count == 5) {
+            cout << "\nUnable to connectTo to " << ip_addr << " client.";
+            count = 0;
+            break;
+        }
+
+    } while(sock == -1);
+
+    //TODO: handle peer client connection error
+
+    return sock;
+
+}
+
 string generate_query(int op, string input)
 {
     string query;
@@ -108,6 +133,49 @@ string generate_query(int op, string input)
 
 }
 
+int handleDownloadFromPeer(mutex mutx, string filename){
+    int chunkid;
+    string ipaddr;
+    TCPClient peerClient;
+
+    mutx.lock();
+    auto random_pair = next(begin(file_map), rand_between(0, file_map.size()));
+    chunkid = random_pair.first;
+    ipaddr = random_pair.second;
+    file_map.erase(chunkid);
+    mutx.unlock();
+
+    if(connectToClient(peerClient, ipaddr) == -1){
+        //TODO: Add back pair
+    }
+
+    peerClient.send_data(to_string(filename + " " + chunkid));
+
+
+}
+
+int downloadFileFromPeers(string filename){
+
+    int count, i;
+    mutex mutx;
+
+    while(!file_map.empty()){
+        thread thread_obj1(handleDownloadFromPeer, mutx, filename);
+        thread thread_obj2(handleDownloadFromPeer, mutx, filename);
+        thread thread_obj3(handleDownloadFromPeer, mutx, filename);
+        thread thread_obj4(handleDownloadFromPeer, mutx, filename);
+        thread thread_obj5(handleDownloadFromPeer, mutx, filename);
+
+        thread_obj1.join();
+        thread_obj2.join();
+        thread_obj3.join();
+        thread_obj4.join();
+        thread_obj5.join();
+    }
+
+
+}
+
 /**************** COMMANDS  ***********************
 */
 
@@ -126,7 +194,6 @@ int downloadFile()
     int i, j, k, l, server_sock, num_of_chunks, filesize, chunkid, count;
     string filename, query, reply, chunkdetails, ipaddr;
     TCPClient server_connection;
-    FILE_IPADDR_MAP file_map;
 
     cout << "\nEnter file to download: ";
     getline(cin, filename);
@@ -137,9 +204,10 @@ int downloadFile()
 
     query = generate_query(3, filename);
     server_connection.send_data(query);
-    reply = server_connection.receive();
+    reply = server_connection.read();
+    server_connection.close();
 
-    if(reply[0] == '0'){
+    if(reply[0] == '0' || reply[0] == ''){
         cout << "\nFile is not available. Please choose another file to download." << endl;
         return -1;
     } else {
@@ -156,6 +224,7 @@ int downloadFile()
         count  = 1;
         k = find_Nth_occurence(" ", count, chunkdetails) + 1;
         l = find_Nth_occurence(" ", count + 1, chunkdetails);
+        file_map.clear();
 
         for(i = 0; i < num_of_chunks; i++){
             chunkid = stoi(chunkdetails.substr(j, k - j - 1));
@@ -170,12 +239,7 @@ int downloadFile()
         }
     }
 
-    while(!file_map.empty()){
-        int count;
-
-
-    }
-
+    downloadFileFromPeers(filename);
 }
 
 int uploadFile(){
