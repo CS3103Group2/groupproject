@@ -145,7 +145,7 @@ int getUpdateFromServer(string filename, int chunkid){
         return -1;
     }
 
-    query = generate_query(7, filename + to_string(chunkid));
+    query = generate_query(7, filename + to_string(chunkid) + "\n");
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
@@ -177,7 +177,7 @@ void handleDownloadFromPeer(string filename){
         mutx.unlock();
     }
 
-    peerClient.send_data(filename + " " + to_string(chunkid));
+    peerClient.send_data(filename + " " + to_string(chunkid) + "\n");
     reply = peerClient.read();
 
     if(reply[0] == '0') {
@@ -281,7 +281,7 @@ int downloadFile()
         exit(1);
     }
 
-    query = generate_query(3, filename);
+    query = generate_query(3, filename + "\n");
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
