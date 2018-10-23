@@ -136,7 +136,7 @@ string generate_query(int op, string input)
 
 }
 
-int getUpdateFromServer(int chunkid){
+int getUpdateFromServer(string filename, int chunkid){
 
     string query, reply;
     TCPClient server_connection;
@@ -145,7 +145,7 @@ int getUpdateFromServer(int chunkid){
         return -1;
     }
 
-    query = generate_query(7, to_string(chunkid));
+    query = generate_query(7, filename + to_string(chunkid));
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
@@ -181,9 +181,9 @@ void handleDownloadFromPeer(string filename){
     reply = peerClient.read();
 
     if(reply[0] == '0') {
-        status = getUpdateFromServer(chunkid);
+        status = getUpdateFromServer(filename, chunkid);
     } else if (peerClient.receiveAndWriteToFile(filename + "/" + to_string(chunkid)) < 0){
-        status = getUpdateFromServer(chunkid);
+        status = getUpdateFromServer(filename, chunkid);
     }
     peerClient.exit();
 
