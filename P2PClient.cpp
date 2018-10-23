@@ -120,6 +120,7 @@ string generate_query(int op, string input)
         case 1: //
             break;
         case 2: //Query a file
+			query = "2 " + input;
             break;
         case 3: //Download a file
             query = "3 " + input;
@@ -325,12 +326,48 @@ int downloadFileFromPeers(string filename, int num_of_chunks){
 
 int listFiles()
 {
+ int i, filesize;
+    string filename, query, reply;
+    TCPClient server_connection;
 
+    if(connectToServer(server_connection) == -1){
+        exit(1);
+    }
+
+    query = "1 ";
+    server_connection.send_data(query);
+    reply = server_connection.read();
+    server_connection.exit();
+
+    cout << reply << endl;
 }
 
 int searchFile()
 {
+    int i, filesize, num_of_chunks;
+    string filename, reply, query;
+    TCPClient server_connection;
 
+    cout << "Enter file to search: ";
+    cin.get();
+    getline(cin, filename);
+    cout << "Confirmation of file that will be queried: " << filename << endl;
+
+    if(connectToServer(server_connection) == -1){
+        exit(1);
+    }
+
+    query = generate_query(2, filename);
+    server_connection.send_data(query);
+    reply = server_connection.read();
+    server_connection.exit();
+
+    if(reply[0] == '0'){
+        cout << "\nFile does not exist. Please choose another file to search." << endl;
+        return -1;
+    } else {
+    	cout << reply << endl;
+	}
 }
 
 int downloadFile()
