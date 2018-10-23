@@ -301,7 +301,7 @@ int searchFile()
         cout << "\nFile does not exist. Please choose another file to search." << endl;
         return -1;
     } else {
-    	cout << reply;
+    	cout << reply << endl;
 	}
 }
 

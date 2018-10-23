@@ -142,6 +142,35 @@ string Knowledge_Base::downloadFile(string fileName){
 string Knowledge_Base::getFileInfo(FILE_NAME fileName){
     return "";
 }
+
+string Knowledge_Base::getPeerForChunks(string fn, vector<int> chunkIDList){
+    string returnStr;
+
+    readerLock();
+
+    int randomNo;
+    int i=1;
+    
+    srand (time(NULL));
+
+    CHUNK_IP_MAP::const_iterator itr;
+    CHUNK_IP_MAP temp = File_List.find(fn)->second;
+
+    for (auto id: chunkIDList){
+        itr = temp.find(id);
+        returnStr += to_string(id) + " ";
+        randomNo = rand() % itr->second.size();
+        returnStr += itr->second[randomNo] + " "; // random peer IP
+    }
+    
+    returnStr += "\r\n";
+
+    readerUnlock();
+
+    return returnStr;
+}
+
+
 void Knowledge_Base::uploadNewFile(string ipAddr, string fileName, int fileSize){
 
     writerLock();
