@@ -58,6 +58,7 @@ class Knowledge_Base{
     string listAllFiles();
     string getFileInfo(string fileName);
     string downloadFile(string fileName);    
+    string getPeerForChunks(string fn, vector<int> chunkIDList);
     void uploadNewFile(string ipAddr, string fileName, int fileSize);   
     void updatePeerFileChunkStatus(string ipAddr, string fileName, vector<int> chunkIDList);
 
