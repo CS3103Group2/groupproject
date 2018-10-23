@@ -334,7 +334,7 @@ int listFiles()
         exit(1);
     }
 
-    query = "1 ";
+    query = "1 \n";
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
@@ -357,7 +357,7 @@ int searchFile()
         exit(1);
     }
 
-    query = generate_query(2, filename);
+    query = generate_query(2, filename + "\n");
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
