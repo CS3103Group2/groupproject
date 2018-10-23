@@ -13,14 +13,15 @@
 #include <netdb.h>
 #include <vector>
 #include <thread>
+#include <regex>
 #include "TCPClient.h"
 
 using namespace std;
 typedef unordered_map<int, string> FILE_IPADDR_MAP;
 
 string p2pserver_address;
-FILE_IPADDR_MAP file_map;
-mutex mutx;
+FILE_IPADDR_MAP file_map, file_map_failed, file_map_successful;
+mutex mutx, mutx_for_failed, mutx_for_successful;
 
 void displayOptions(){
     cout << "\n*-*-*-*-*-*-*-*-*-* OPTIONS *-*-*-*-*-*-*-*-*-*-*-*" << endl;
@@ -136,25 +137,69 @@ string generate_query(int op, string input)
 
 }
 
-int getUpdateFromServer(string filename, int chunkid){
+int getUpdateFromServer(string filename){
 
-    string query, reply;
+    int chunkid;
+    string query, reply, temp;
     TCPClient server_connection;
 
     if(connectToServer(server_connection) == -1){
         return -1;
     }
 
-    query = generate_query(7, filename + to_string(chunkid) + "\n");
+    for (pair<int, string> element : file_map_failed)
+    {
+    	temp += " " + to_string(element.first) + " " + element.second;
+        mutx_for_failed.lock();
+        file_map_failed.erase(element.first);
+        mutx_for_failed.unlock();
+    }
+
+    query = generate_query(7, filename + temp + "\n");
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
 
-    mutx.lock();
-    file_map.insert((pair<int,string>) make_pair(chunkid, reply));
-    mutx.unlock();
+    regex ws_re("\\s+");
+    vector<string> result{
+        sregex_token_iterator(reply.begin(), reply.end(), ws_re, -1), {}
+    };
+
+    if(result[0] == "0"){
+        cout << "File is unavailable for download." << endl;
+        exit(1);
+    }
+
+    for (int i = 1; i < (result.size() - 1); i += 2){
+        mutx.lock();
+        file_map.insert((pair<int,string>) make_pair(stoi(result[i]), result[i + 1]));
+        mutx.unlock();
+    }
 
     return 0;
+}
+
+void updateServerOnAvailableChunks(string filename){
+
+    string query, temp;
+    TCPClient server_connection;
+
+    if(connectToServer(server_connection) == -1){
+        return;
+    }
+
+    for (pair<int, string> element : file_map_successful)
+    {
+    	temp += " " + to_string(element.first) + " " + element.second;
+        mutx_for_successful.lock();
+        file_map_successful.erase(element.first);
+        mutx_for_successful.unlock();
+    }
+
+    query = generate_query(6, filename + temp + "\n");
+    server_connection.send_data(query);
+    server_connection.exit();
+
 }
 
 void handleDownloadFromPeer(string filename){
@@ -164,6 +209,10 @@ void handleDownloadFromPeer(string filename){
     string reply;
 
     mutx.lock();
+    if(file_map.empty()){
+        mutx.unlock();
+        return;
+    }
     auto random_pair = next(begin(file_map), (rand() % file_map.size()));
     chunkid = random_pair->first;
     ipaddr = random_pair->second;
@@ -181,17 +230,22 @@ void handleDownloadFromPeer(string filename){
     reply = peerClient.read();
 
     if(reply[0] == '0') {
-        status = getUpdateFromServer(filename, chunkid);
+        mutx_for_failed.lock();
+        file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
+        mutx_for_failed.unlock();
     } else if (peerClient.receiveAndWriteToFile(filename + "/" + to_string(chunkid)) < 0){
-        status = getUpdateFromServer(filename, chunkid);
+        mutx_for_failed.lock();
+        file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
+        mutx_for_failed.unlock();
     }
     peerClient.exit();
 
-    if(status < 0){
-        mutx.lock();
-        file_map.insert((pair<int,string>)make_pair(chunkid, ipaddr));
-        mutx.unlock();
-    }
+    mutx_for_successful.lock();
+    file_map_successful.insert((pair<int,string>) make_pair(chunkid, ipaddr));
+    mutx_for_successful.unlock();
+
+    return;
+
 }
 
 
@@ -233,10 +287,18 @@ int mergeAllFiles(string filename, int num_of_chunks){
 
 int downloadFileFromPeers(string filename, int num_of_chunks){
 
-    int count, i;
+    int count = 0;
     mutex mutx;
 
-    while(!file_map.empty()){
+    while(!file_map.empty() && !file_map_failed.empty()){
+        if(count == 2 || file_map.empty()){
+            getUpdateFromServer(filename);
+            count = 0;
+            if(!file_map_successful.empty()){
+                updateServerOnAvailableChunks(filename);
+            }
+        }
+
         thread thread_obj1(handleDownloadFromPeer, filename);
         thread thread_obj2(handleDownloadFromPeer, filename);
         thread thread_obj3(handleDownloadFromPeer, filename);
@@ -248,8 +310,11 @@ int downloadFileFromPeers(string filename, int num_of_chunks){
         thread_obj3.join();
         thread_obj4.join();
         thread_obj5.join();
+
+        count++;
     }
 
+    updateServerOnAvailableChunks(filename);
     mergeAllFiles(filename, num_of_chunks);
 
     cout << "Download successful!" << endl;
@@ -290,31 +355,21 @@ int downloadFile()
         cout << "\nFile is not available. Please choose another file to download." << endl;
         return -1;
     } else {
-        int filesize_pos = find_Nth_occurence(" ", 2, reply);
-        int numofchunks_pos = find_Nth_occurence(" ", 3, reply);
-        int chunks_pos = find_Nth_occurence(" ", 4, reply);
+        regex ws_re("\\s+");
+        vector<string> result{
+            sregex_token_iterator(reply.begin(), reply.end(), ws_re, -1), {}
+        };
 
-        filename = reply.substr(2, filesize_pos - 2);
-        filesize = stoi(reply.substr(filesize_pos + 1, numofchunks_pos - (filesize_pos + 1)));
-        num_of_chunks = stoi(reply.substr(numofchunks_pos + 1, chunks_pos - (numofchunks_pos + 1)));
-        chunkdetails = reply.substr(chunks_pos + 1);
+        filename = result[1];
+        filesize = stoi(result[2]);
+        num_of_chunks = stoi(result[3]);
 
-        j = 0;
-        count  = 1;
-        k = find_Nth_occurence(" ", count, chunkdetails) + 1;
-        l = find_Nth_occurence(" ", count + 1, chunkdetails);
         file_map.clear();
 
         for(i = 0; i < num_of_chunks; i++){
-            chunkid = stoi(chunkdetails.substr(j, k - j - 1));
-            ipaddr = chunkdetails.substr(k, l - k);
+            chunkid = stoi(result[i + 4]);
+            ipaddr = result[i + 5];
             file_map.insert((pair<int,string>) make_pair(chunkid, ipaddr));
-            if(i != (num_of_chunks - 1)) {
-                j = l + 1;
-                count += 2;
-                k = find_Nth_occurence(" ", count, chunkdetails) + 1;
-                l = find_Nth_occurence(" ", count + 1, chunkdetails);
-            }
         }
     }
 
