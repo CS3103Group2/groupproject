@@ -97,17 +97,16 @@ string Knowledge_Base::listAllFiles(){
 
     readerLock();
 
-    returnString += "     File Name      File Size      Initial Seeder\n";
+    returnString += "     File Name         File Size          Initial Seeder\n";
     int i = 1;
     for(auto &itr: fdm){
         returnString += to_string(i) + ".   ";
         returnString += itr.first + "   ";
         FileInfo &fi = itr.second;
         returnString += to_string(fi.fileSize) + "  ";
-        returnString += fi.initialSeeder + "    \n";
+        returnString += fi.initialSeeder + "\n";
         i++;
     }
-    returnString += "\r\n";
 
     readerUnlock();
 
@@ -120,19 +119,18 @@ string Knowledge_Base::downloadFile(string fileName){
 
     readerLock();
 
-    returnStr += fileName + " "; // file name
-    returnStr += to_string(fdm[fileName].fileSize) + " "; // file size
-    returnStr += to_string(File_List[fileName].size()) + " "; // num of chunk
+    returnStr += " " + fileName; // file name
+    returnStr += " " + to_string(fdm[fileName].fileSize); // file size
+    returnStr += " " + to_string(File_List[fileName].size()); // num of chunk
     int randomNo;
     int i=1;
     
     srand (time(NULL));
     for (auto itr: File_List[fileName]){
-        returnStr += to_string(itr.first) + " ";    //chunk id
+        returnStr += " " + to_string(itr.first);    //chunk id
         randomNo = rand() % itr.second.size();
-        returnStr += itr.second[randomNo] + " "; // random peer IP
+        returnStr += " " + itr.second[randomNo]; // random peer IP
     }
-    returnStr += "\r\n";
 
     readerUnlock();
 
@@ -158,12 +156,10 @@ string Knowledge_Base::getPeerForChunks(string fn, vector<int> chunkIDList){
 
     for (auto id: chunkIDList){
         itr = temp.find(id);
-        returnStr += to_string(id) + " ";
+        returnStr += " " + to_string(id);
         randomNo = rand() % itr->second.size();
-        returnStr += itr->second[randomNo] + " "; // random peer IP
+        returnStr += " " + itr->second[randomNo]; // random peer IP
     }
-    
-    returnStr += "\r\n";
 
     readerUnlock();
 
