@@ -14,6 +14,10 @@
 #include <vector>
 #include <thread>
 #include <regex>
+
+// Uncomment in Linux for child handling
+// #include <sys/prctl.h>
+// #include <fcntl.h>
 #include "TCPClient.h"
 
 using namespace std;
@@ -22,6 +26,10 @@ typedef unordered_map<int, string> FILE_IPADDR_MAP;
 string p2pserver_address;
 FILE_IPADDR_MAP file_map, file_map_failed, file_map_successful;
 mutex mutx, mutx_for_failed, mutx_for_successful;
+
+/******************************************************************************
+***************************** Utilities  **************************************
+******************************************************************************/
 
 void displayOptions(){
     cout << "\n*-*-*-*-*-*-*-*-*-* OPTIONS *-*-*-*-*-*-*-*-*-*-*-*" << endl;
@@ -34,37 +42,36 @@ void displayOptions(){
     cout << "Enter your option: ";
 }
 
-/************** Utilities ********************* */
-
-
-/// Returns the position of the 'Nth' occurrence of 'find' within 'str'.
-/// Note that 1==find_Nth( "aaa", 2, "aa" ) [2nd "aa"]
-/// - http://stackoverflow.com/questions/17023302/
-// test case: assert(  3 == find_Nth( "My gorila ate the banana", 1 , "gorila") );
-
-size_t find_Nth_occurence(const string &str, unsigned N, const string &find)
+string generate_query(int op, string input)
 {
-    if ( 0 == N )
-    {
-        return string::npos;
-    }
+    string query;
 
-    size_t pos, from = 0;
-    unsigned i = 0;
-
-    while ( i < N )
+    switch(op)
     {
-        pos=str.find(find,from);
-        if ( string::npos == pos )
-        {
+        case 1: //
             break;
-        }
-
-        from = pos + 1; // from = pos + find.size();
-        ++i;
+        case 2: //Query a file
+			query = "2 " + input;
+            break;
+        case 3: //Download a file
+            query = "3 " + input;
+            break;
+        case 4: // Upload a file
+            query = "4 " + input;
+            break;
+        case 5: //exit from p2p
+            query = "5 " + input;
+            break;
+        case 6: //Update server on availble chunks
+            query = "6 " + input;
+        case 7: //Get chunk updates from server
+            query = "7 " + input;
+        default:
+            query = "";
     }
 
-    return pos;
+    return query;
+
 }
 
 int connectToServer(TCPClient tcp_client)
@@ -111,32 +118,6 @@ int connectToClient(TCPClient tcp_client, string ip_addr)
 
 }
 
-string generate_query(int op, string input)
-{
-    string query;
-
-    switch(op)
-    {
-        case 1: //
-            break;
-        case 2: //Query a file
-			query = "2 " + input;
-            break;
-        case 3: //Download a file
-            query = "3 " + input;
-            break;
-        case 4: // Upload a file
-            query = "";
-            break;
-        case 7:
-            query = "7 " + input;
-        default:
-            query = "";
-    }
-
-    return query;
-
-}
 
 int getUpdateFromServer(string filename){
 
@@ -182,11 +163,15 @@ int getUpdateFromServer(string filename){
 
 void updateServerOnAvailableChunks(string filename){
 
+    int sock, count = 0;
     string query, temp;
     TCPClient server_connection;
 
-    if(connectToServer(server_connection) == -1){
-        return;
+    while((sock = server_connection.connectTo(p2pserver_address, PORT)) == -1){
+        count++;
+        if(count >= 5){
+            return;
+        }
     }
 
     for (pair<int, string> element : file_map_successful)
@@ -319,10 +304,57 @@ int downloadFileFromPeers(string filename, int num_of_chunks){
     mergeAllFiles(filename, num_of_chunks);
 
     cout << "Download successful!" << endl;
+    return 1;
 }
 
-/**************** COMMANDS  ***********************
-*/
+
+void processDownloadFromClient(int sock, string clientAddr){
+
+    int bytesRecved, chunkid;
+    char buffer[SIZE];
+    string filename, response;
+
+    while (1){
+        if ((bytesRecved = recv(sock, buffer, SIZE, 0)) <= 0){
+            break;
+        }
+
+        buffer[bytesRecved] = '\0';
+        // cout <<"Thread connecting to " << clientAddr << " has received " << buffer << endl;
+        string msg(buffer);
+        regex ws_re("\\s+");
+        vector<string> result{
+            sregex_token_iterator(msg.begin(), msg.end(), ws_re, -1), {}
+        };
+
+        filename = result[0];
+        chunkid = stoi(result[1]);
+
+        FILE *file = fopen((filename + "/" + to_string(chunkid)).c_str(), "rb");
+
+        if(file){
+            response = "0 \n";
+            send(sock, response.c_str(), response.length(), 0);
+            return;
+        }
+
+        fseek(file, 0, SEEK_END);
+        unsigned long filesize = ftell(file);
+        char *file_buffer = (char*)malloc(sizeof(char)*filesize);
+        rewind(file);
+        // store read data into buffer
+        fread(file_buffer, sizeof(char), filesize, file);
+        // send buffer to client
+        send(sock, buffer, filesize, 0);
+    }
+
+    close(sock);
+
+}
+
+/*****************************************************************************
+***************************** COMMANDS  **************************************
+******************************************************************************/
 
 int listFiles()
 {
@@ -340,6 +372,8 @@ int listFiles()
     server_connection.exit();
 
     cout << reply << endl;
+
+    return 0;
 }
 
 int searchFile()
@@ -388,7 +422,7 @@ int downloadFile()
     reply = server_connection.read();
     server_connection.exit();
 
-    if(reply[0] == '0' || reply[0] == NULL){
+    if(reply[0] == '0'){
         cout << "\nFile is not available. Please choose another file to download." << endl;
         return -1;
     } else {
@@ -417,32 +451,72 @@ int uploadFile(){
 
 }
 
+int quit(){
+
+}
+
+
+
 int main()
 {
-    int op;
+    pid_t pid;
+    int op, mySock, cnxnSock;
+    string str;
+    struct sockaddr_in myAddress;
+    struct sockaddr_in clientAddress;
+
     cout << "Enter IP address of P2P server: ";
     getline(cin, p2pserver_address);
 
-    do{
-        displayOptions();
-        cin >> op;
-        switch(op){
-            case 1:
-                listFiles();
-                break;
-            case 2:
-                searchFile();
-                break;
-            case 3:
-                downloadFile();
-                break;
-            case 4:
-                uploadFile();
-                break;
-            default:
-                cout << "Invalid option. Please try again." << endl;
+    if(pid == 0){
+        // Uncomment for child handling (only on linux)
+        // prctl(PR_SET_PDEATHSIG, SIGKILL);
+
+        mySock = socket(AF_INET, SOCK_STREAM, 0);
+     	memset(&myAddress,0,sizeof(myAddress));
+    	myAddress.sin_family = AF_INET;
+    	myAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+    	myAddress.sin_port = htons(PORT);
+    	bind(mySock,(struct sockaddr *)&myAddress, sizeof(myAddress));
+
+        listen(mySock,1);
+
+        socklen_t sosize  = sizeof(clientAddress);
+
+        while (1){
+            cnxnSock = accept(mySock, (struct sockaddr*)&clientAddress, &sosize);
+            // cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
+            thread slave(processDownloadFromClient, cnxnSock, inet_ntoa(clientAddress.sin_addr));
+            slave.detach();
         }
 
-    } while (op != 5);
+        close(mySock);
+        return 0;
+
+    } else {
+        do{
+            displayOptions();
+            cin >> op;
+            switch(op){
+                case 1:
+                    listFiles();
+                    break;
+                case 2:
+                    searchFile();
+                    break;
+                case 3:
+                    downloadFile();
+                    break;
+                case 4:
+                    uploadFile();
+                    break;
+                default:
+                    cout << "Invalid option. Please try again." << endl;
+            }
+
+        } while (op != 5);
+    }
+
+    quit();
 
 }
