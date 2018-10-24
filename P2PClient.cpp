@@ -45,29 +45,30 @@ void displayOptions(){
 string generate_query(int op, string input)
 {
     string query;
+    string returnchar = "\r\n";
 
     switch(op)
     {
         case 1: //
             break;
         case 2: //Query a file
-			query = "2 " + input;
+			query = "2 " + input + returnchar;
             break;
         case 3: //Download a file
-            query = "3 " + input;
+            query = "3 " + input + returnchar;
             break;
         case 4: // Upload a file
-            query = "4 " + input;
+            query = "4 " + input + returnchar;
             break;
         case 5: //exit from p2p
-            query = "5 " + input;
+            query = "5 " + input + returnchar;
             break;
         case 6: //Update server on availble chunks
-            query = "6 " + input;
+            query = "6 " + input + returnchar;
         case 7: //Get chunk updates from server
-            query = "7 " + input;
+            query = "7 " + input + returnchar;
         default:
-            query = "";
+            query = "" + returnchar;
     }
 
     return query;
@@ -137,7 +138,7 @@ int getUpdateFromServer(string filename){
         mutx_for_failed.unlock();
     }
 
-    query = generate_query(7, filename + temp + "\n");
+    query = generate_query(7, filename + temp);
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
@@ -182,7 +183,7 @@ void updateServerOnAvailableChunks(string filename){
         mutx_for_successful.unlock();
     }
 
-    query = generate_query(6, filename + temp + "\n");
+    query = generate_query(6, filename + temp);
     server_connection.send_data(query);
     server_connection.exit();
 
@@ -212,7 +213,7 @@ void handleDownloadFromPeer(string filename){
         mutx.unlock();
     }
 
-    peerClient.send_data(filename + " " + to_string(chunkid) + "\n");
+    peerClient.send_data(filename + " " + to_string(chunkid));
     reply = peerClient.read();
 
     if(reply[0] == '0') {
@@ -391,7 +392,7 @@ int searchFile()
         exit(1);
     }
 
-    query = generate_query(2, filename + "\n");
+    query = generate_query(2, filename);
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
@@ -417,7 +418,7 @@ int downloadFile()
         exit(1);
     }
 
-    query = generate_query(3, filename + "\n");
+    query = generate_query(3, filename);
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
@@ -436,6 +437,8 @@ int downloadFile()
         num_of_chunks = stoi(result[3]);
 
         file_map.clear();
+        file_map_failed.clear();
+        file_map_successful.clear();
 
         for(i = 0; i < num_of_chunks; i++){
             chunkid = stoi(result[i + 4]);
@@ -467,6 +470,8 @@ int main()
 
     cout << "Enter IP address of P2P server: ";
     getline(cin, p2pserver_address);
+
+    pid = fork();
 
     if(pid == 0){
         // Uncomment for child handling (only on linux)
