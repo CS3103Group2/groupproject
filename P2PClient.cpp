@@ -83,6 +83,7 @@ int connectToServer(TCPClient & tcp_client)
     int count = 0;
     string response = "y";
     do{
+        tcp_client = *(new TCPClient());
         sock = tcp_client.connectTo(p2pserver_address, PORT);
         count++;
 
@@ -414,7 +415,7 @@ int downloadFile()
     TCPClient server_connection;
 
     cout << "\nEnter file to download: ";
-    getline(cin, filename);
+    cin >> filename;
 
     if(connectToServer(server_connection) == -1){
         exit(1);
