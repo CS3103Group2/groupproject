@@ -22,57 +22,66 @@ Knowledge_Base KB;
 
 void handleList(string &response){
     if (!KB.isEmpty()){
-        response = KB.listAllFiles();
+        response = "1" + KB.listAllFiles() + "\r\n";
     } else{
-        response = "There are currently no files in the network.\n";
+        response = "0 There are currently no files in the network.\r\n";
     }
 }
 
 void handleSearch(string fileName, string &response){
     if (KB.containsFile(fileName)){
-        response = KB.getFileInfo(fileName);
+        response = "1" + KB.getFileInfo(fileName) + "\r\n";
     } else{
-        response = "This file does not exist!\n";
+        response = "0 This file does not exist.\r\n";
     }
 }
 
 void handleDownload(string fileName, string &response){
     if (KB.containsFile(fileName)){
-        response = "1 " + KB.downloadFile(fileName);
+        response = "1" + KB.downloadFile(fileName) + "\r\n";
     } else{
-        response = "0 \n";
+        response = "0 This file does not exist.\r\n";
     }
 }
 
 void handleUpload(string ipAddr, string fileName, int fileSize, string &response){
+    if (KB.containsFile(fileName)){
+        response = "0 A file of this name already exists. Rename the file and try again.\r\n";
+        return;
+    }
     KB.uploadNewFile(ipAddr, fileName, fileSize);
-    response = "1 \n";
+    response = "1\r\n";
 }
 
 void handleExit(string clientAddr, string &response){
     KB.removePeer(clientAddr);
-    response = "You selfish bastard =D.\n";
+    response = "1 You selfish bastard =D.\r\n";
 }
 
 void handleUpdate(string clientAddr, vector<string> incomingMsg, string &response){
     vector<int> chunkIDList;
-    for (int i=2; i < (incomingMsg.size()-1); i++){ // last item should be \r\n
+    for (int i=2; i < incomingMsg.size(); i++){ 
         chunkIDList.push_back(stoi(incomingMsg[i]));
     }
-    KB.updatePeerFileChunkStatus(clientAddr, incomingMsg[1], chunkIDList);
-    response = "1 \n";
+    if (KB.containsFile(incomingMsg[1])){
+        KB.updatePeerFileChunkStatus(clientAddr, incomingMsg[1], chunkIDList);
+        response = "1\r\n";
+    } else{
+        response = "0\r\n";
+    }
+    
 }
 
 void handleGetChunks(vector<string> &incomingMsg, string & response){
     vector<int> chunkIDList;
-    for (int i=2; i < (incomingMsg.size()-1); i++){ // last item should be \r\n
+    for (int i=2; i < incomingMsg.size(); i++){
         chunkIDList.push_back(stoi(incomingMsg[i]));
     }
     if (KB.containsFile(incomingMsg[1])){
-        response = "1 ";
-        response += KB.getPeerForChunks(incomingMsg[1], chunkIDList);
+        response = "1";
+        response += KB.getPeerForChunks(incomingMsg[1], chunkIDList) + "\r\n";
     } else{
-        response = "0 \n";
+        response = "0\r\n";
     }
 }
 
@@ -98,7 +107,7 @@ void processIncomingMessage(string message, string &response, string clientAddr)
     } else if (code == "7"){
         handleGetChunks(result,response);
     } else{
-        response = "Action is not defined!\n";
+        response = "0 Action is not defined!\r\n";
     }
 }
 
@@ -112,7 +121,7 @@ void threadHandler(int sock, string clientAddr){
             break;
         }
         buffer[bytesRecved] = '\0';
-        cout <<"Thread connecting to " << clientAddr << " has received " << buffer << endl;
+        //cout <<"Thread connecting to " << clientAddr << " has received " << buffer << endl;
         string msg(buffer);
         string response;
         processIncomingMessage(msg, response, clientAddr);
