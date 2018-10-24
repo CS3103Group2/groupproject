@@ -14,10 +14,11 @@
 #include <vector>
 #include <thread>
 #include <regex>
+#include <mutex>
 
 // Uncomment in Linux for child handling
-// #include <sys/prctl.h>
-// #include <fcntl.h>
+#include <sys/prctl.h>
+#include <fcntl.h>
 #include "TCPClient.h"
 
 using namespace std;
@@ -475,7 +476,7 @@ int main()
 
     if(pid == 0){
         // Uncomment for child handling (only on linux)
-        // prctl(PR_SET_PDEATHSIG, SIGKILL);
+        prctl(PR_SET_PDEATHSIG, SIGKILL);
 
         mySock = socket(AF_INET, SOCK_STREAM, 0);
      	memset(&myAddress,0,sizeof(myAddress));
