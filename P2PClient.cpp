@@ -15,10 +15,11 @@
 #include <thread>
 #include <regex>
 #include <mutex>
+#include <signal.h>
 
 // Uncomment in Linux for child handling
-#include <sys/prctl.h>
-#include <fcntl.h>
+// #include <sys/prctl.h>
+// #include <fcntl.h>
 #include "TCPClient.h"
 
 using namespace std;
@@ -76,7 +77,7 @@ string generate_query(int op, string input)
 
 }
 
-int connectToServer(TCPClient tcp_client)
+int connectToServer(TCPClient & tcp_client)
 {
     int sock = -1;
     int count = 0;
@@ -87,7 +88,7 @@ int connectToServer(TCPClient tcp_client)
 
         if (count == 5) {
             cout << "\nUnable to connectTo to P2P Server. Do you want to try again? [y/n]";
-            getline(cin, response);
+            cin >> response;
             count = 0;
         }
 
@@ -98,7 +99,7 @@ int connectToServer(TCPClient tcp_client)
 }
 
 
-int connectToClient(TCPClient tcp_client, string ip_addr)
+int connectToClient(TCPClient & tcp_client, string ip_addr)
 {
     int sock = -1;
     int count = 0;
@@ -360,7 +361,7 @@ void processDownloadFromClient(int sock, string clientAddr){
 
 int listFiles()
 {
- int i, filesize;
+    int i, filesize;
     string filename, query, reply;
     TCPClient server_connection;
 
@@ -476,7 +477,7 @@ int main()
 
     if(pid == 0){
         // Uncomment for child handling (only on linux)
-        prctl(PR_SET_PDEATHSIG, SIGKILL);
+        // prctl(PR_SET_PDEATHSIG, SIGKILL);
 
         mySock = socket(AF_INET, SOCK_STREAM, 0);
      	memset(&myAddress,0,sizeof(myAddress));

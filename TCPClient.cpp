@@ -25,6 +25,7 @@ int TCPClient::connectTo(string address , int port)
         cout << "Socket created\n";
     }
 
+
     //setup address structure
     if(inet_addr(address.c_str()) == -1)
     {
@@ -80,7 +81,7 @@ int TCPClient::connectTo(string address , int port)
 bool TCPClient::send_data(string data)
 {
     //Send some data
-    if(send(sock , data.c_str() , strlen(data.c_str() ) , 0) < 0)
+    if(send(sock , data.c_str() , strlen(data.c_str()) , 0) < 0)
     {
         perror("Send failed : ");
         return false;
