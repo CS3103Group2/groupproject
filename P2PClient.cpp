@@ -14,6 +14,8 @@
 #include <vector>
 #include <thread>
 #include <regex>
+#include <mutex>
+#include <signal.h>
 
 // Uncomment in Linux for child handling
 // #include <sys/prctl.h>
@@ -82,18 +84,19 @@ string generate_query(int op, string input)
 
 }
 
-int connectToServer(TCPClient tcp_client)
+int connectToServer(TCPClient & tcp_client)
 {
     int sock = -1;
     int count = 0;
     string response = "y";
     do{
+        tcp_client = *(new TCPClient());
         sock = tcp_client.connectTo(p2pserver_address, PORT);
         count++;
 
         if (count == 5) {
             cout << "\nUnable to connectTo to P2P Server. Do you want to try again? [y/n]";
-            getline(cin, response);
+            cin >> response;
             count = 0;
         }
 
@@ -104,7 +107,7 @@ int connectToServer(TCPClient tcp_client)
 }
 
 
-int connectToClient(TCPClient tcp_client, string ip_addr)
+int connectToClient(TCPClient & tcp_client, string ip_addr)
 {
     int sock = -1;
     int count = 0;
@@ -366,7 +369,7 @@ void processDownloadFromClient(int sock, string clientAddr){
 
 int listFiles()
 {
- int i, filesize;
+    int i, filesize;
     string filename, query, reply;
     TCPClient server_connection;
 
@@ -419,7 +422,7 @@ int downloadFile()
     TCPClient server_connection;
 
     cout << "\nEnter file to download: ";
-    getline(cin, filename);
+    cin >> filename;
 
     if(connectToServer(server_connection) == -1){
         exit(1);
