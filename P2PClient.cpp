@@ -19,9 +19,16 @@
 // #include <sys/prctl.h>
 // #include <fcntl.h>
 #include "TCPClient.h"
+#include <mutex>
+#include <math.h>
+#include <sstream>
+#include <sys/stat.h>
+
+
 
 using namespace std;
 typedef unordered_map<int, string> FILE_IPADDR_MAP;
+const int DEFAULT_CHUNK_SIZE = 1024;
 
 string p2pserver_address;
 FILE_IPADDR_MAP file_map, file_map_failed, file_map_successful;
@@ -450,8 +457,132 @@ int downloadFile()
     downloadFileFromPeers(filename, num_of_chunks);
 }
 
-int uploadFile(){
+int getFileSize(ifstream *file) {
 
+    file->seekg(0, ios::end);
+
+    int filesize = file->tellg();
+
+    file->seekg(ios::beg);
+
+    return filesize;
+
+}
+
+// template to convert Number to string
+template<typename T> string NumberToString(T Number) {
+    stringstream ss;
+    ss << Number;
+    return ss.str();
+}
+
+
+int uploadFile(){
+    // Main process
+    // 1. Update tracker
+    // 2. Spilt file chunks
+
+    // get filename
+    // get file size
+    // spilt into chunks (num of chunks) store into array
+    // inform the tracker in this format - 4. filename size chunkNum
+
+    string filename, folder, query, reply;
+    int fileSize, num_of_chunks;
+    TCPClient server_connection;    
+
+    cout << "\nEnter file to upload: ";
+    cin >> filename;
+
+    ifstream inputStream;
+    inputStream.open(filename, ios::in | ios::binary); //open the file
+
+    //check for valid file
+    if ( !inputStream.is_open() ) {                 
+        cout << "\nFile not found. Please choose another file to upload." << endl;
+        return -1;
+    }
+
+    fileSize = getFileSize(&inputStream); //get size of the file 
+
+    //cout << "Size " << fileSize << endl;
+
+    num_of_chunks = ceil(fileSize / DEFAULT_CHUNK_SIZE);
+
+    string filepath =  filename + "_chunks";
+
+    // create a directory based on the filename for file chunks
+    const int dir_err = mkdir(filepath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    
+    cout << "Value " << dir_err << endl;
+
+    if(dir_err != -1){
+        cout << "Folder created!" << endl;
+    }
+
+    // ================== QUERY ========================
+    if(connectToServer(server_connection) == -1){
+        exit(1);
+    }
+
+    query = generate_query(4, filename + " " + to_string(fileSize) + " " + to_string(num_of_chunks) + "\n");
+    server_connection.send_data(query);
+    reply = server_connection.read();
+    server_connection.exit();
+    // ================== QUERY ========================
+
+    if (inputStream.is_open()) {
+        ofstream output;
+        int counter = 1;
+
+        string fullChunkName;
+
+        // Create a buffer to hold each chunk
+        char *buffer = new char[DEFAULT_CHUNK_SIZE];
+
+        // Keep reading until end of file
+        while (!inputStream.eof()) {
+
+            // Build the chunk file name. Usually drive:\\filepath\\N
+            // N represents the Nth chunk
+            // Eg: \\hello.c_chunks\\4
+
+            // Convert counter integer into string and append to name.
+            string counterString = NumberToString(counter); 
+
+            fullChunkName.clear();
+            fullChunkName.append(filepath+"/");
+            fullChunkName.append(counterString);
+
+            // Open new chunk file name for output
+            output.open(fullChunkName.c_str(),ios::out | ios::trunc | ios::binary);
+
+            // If chunk file opened successfully, read from input and
+            // write to output chunk. Then close.
+            if (output.is_open()) {
+
+                inputStream.read(buffer, DEFAULT_CHUNK_SIZE);
+
+                // gcount() returns number of bytes read from stream.
+                output.write(buffer, inputStream.gcount());
+
+                output.close();
+
+                counter++;
+            }
+
+        } 
+        // Cleanup buffer
+        delete (buffer);
+
+        // Close input file stream.
+        inputStream.close();
+
+        cout << "Chunking complete! " << counter - 1 << " files created." << endl;
+    } else {
+            cout << "Error opening file!" << endl;
+    }
+    return 0;
 }
 
 int quit(){
