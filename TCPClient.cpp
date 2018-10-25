@@ -25,6 +25,7 @@ int TCPClient::connectTo(string address , int port)
         cout << "Socket created\n";
     }
 
+
     //setup address structure
     if(inet_addr(address.c_str()) == -1)
     {
@@ -80,7 +81,7 @@ int TCPClient::connectTo(string address , int port)
 bool TCPClient::send_data(string data)
 {
     //Send some data
-    if(send(sock , data.c_str() , strlen(data.c_str() ) , 0) < 0)
+    if(send(sock , data.c_str() , strlen(data.c_str()) , 0) < 0)
     {
         perror("Send failed : ");
         return false;
@@ -122,7 +123,33 @@ string TCPClient::read()
 	return reply;
 }
 
+string TCPClient::readAllFiles(int size = 512)
+{
+  	char buffer[size];
+  	string reply;
+	string test;
+
+    	if(recv(sock , buffer , sizeof(buffer) , 0) < 0) {
+        	cout << "receive failed!" << endl;
+	return ""; 
+	}
+
+	cout << endl;
+
+/*	for (int x = 0; x < sizeof(buffer); x++) {
+		test += buffer;
+		if (buffer[x] == '\r' && buffer[x] == '\n') {
+			break; 
+		}
+	}
+*/
+	reply = buffer;
+	return reply;
+//	return test;
+}
+
 void TCPClient::exit()
 {
     close(sock);
 }
+
