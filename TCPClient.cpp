@@ -71,7 +71,7 @@ int TCPClient::connectTo(string address , int port)
         return -1;
     }
 
-    cout<<"Connected\n";
+    cout<< "Connected to " + address;
     return sock;
 }
 

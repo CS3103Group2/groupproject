@@ -60,7 +60,7 @@ void handleExit(string clientAddr, string &response){
 
 void handleUpdate(string clientAddr, vector<string> incomingMsg, string &response){
     vector<int> chunkIDList;
-    for (int i=2; i < incomingMsg.size(); i++){ 
+    for (int i=2; i < incomingMsg.size(); i++){
         chunkIDList.push_back(stoi(incomingMsg[i]));
     }
     if (KB.containsFile(incomingMsg[1])){
@@ -69,7 +69,7 @@ void handleUpdate(string clientAddr, vector<string> incomingMsg, string &respons
     } else{
         response = "0\r\n";
     }
-    
+
 }
 
 void handleGetChunks(vector<string> &incomingMsg, string & response){
@@ -133,7 +133,7 @@ void threadHandler(int sock, string clientAddr){
 }
 
 
-main(int argc, char const *argv[])
+int main(int argc, char const *argv[])
 {
     int serverSock, cnxnSock;
     string str;

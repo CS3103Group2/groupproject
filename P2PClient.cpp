@@ -230,7 +230,7 @@ void handleDownloadFromPeer(string filename){
         mutx_for_failed.lock();
         file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
         mutx_for_failed.unlock();
-    } else if (peerClient.receiveAndWriteToFile(filename + "/" + to_string(chunkid)) < 0){
+    } else if (peerClient.receiveAndWriteToFile(filename + "_chunks/" + to_string(chunkid)) < 0){
         mutx_for_failed.lock();
         file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
         mutx_for_failed.unlock();
@@ -288,6 +288,8 @@ int downloadFileFromPeers(string filename, int num_of_chunks){
     mutex mutx;
 
     while(!file_map.empty() && !file_map_failed.empty()){
+
+        cout<< "WENT INTO REPEAT";
         if(count == 2 || file_map.empty()){
             getUpdateFromServer(filename);
             count = 0;
@@ -302,6 +304,7 @@ int downloadFileFromPeers(string filename, int num_of_chunks){
         thread thread_obj4(handleDownloadFromPeer, filename);
         thread thread_obj5(handleDownloadFromPeer, filename);
 
+        cout << "CREATED " + count << endl;
         thread_obj1.join();
         thread_obj2.join();
         thread_obj3.join();
@@ -341,7 +344,7 @@ void processDownloadFromClient(int sock, string clientAddr){
         filename = result[0];
         chunkid = stoi(result[1]);
 
-        FILE *file = fopen((filename + "/" + to_string(chunkid)).c_str(), "rb");
+        FILE *file = fopen((filename + "_chunks/" + to_string(chunkid)).c_str(), "rb");
 
         if(file){
             response = "0 \n";
@@ -450,7 +453,7 @@ int downloadFile()
         file_map_failed.clear();
         file_map_successful.clear();
 
-        for(i = 0; i < num_of_chunks; i++){
+        for(i = 0; i < (num_of_chunks*2); i+=2){
             chunkid = stoi(result[i + 4]);
             ipaddr = result[i + 5];
             file_map.insert((pair<int,string>) make_pair(chunkid, ipaddr));
@@ -492,7 +495,7 @@ int uploadFile(){
 
     string filename, folder, query, reply;
     int fileSize, num_of_chunks;
-    TCPClient server_connection;    
+    TCPClient server_connection;
 
     cout << "\nEnter file to upload: ";
     cin >> filename;
@@ -501,12 +504,12 @@ int uploadFile(){
     inputStream.open(filename, ios::in | ios::binary); //open the file
 
     //check for valid file
-    if ( !inputStream.is_open() ) {                 
+    if ( !inputStream.is_open() ) {
         cout << "\nFile not found. Please choose another file to upload." << endl;
         return -1;
     }
 
-    fileSize = getFileSize(&inputStream); //get size of the file 
+    fileSize = getFileSize(&inputStream); //get size of the file
 
     //cout << "Size " << fileSize << endl;
 
@@ -516,7 +519,7 @@ int uploadFile(){
 
     // create a directory based on the filename for file chunks
     const int dir_err = mkdir(filepath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    
+
     cout << "Value " << dir_err << endl;
 
     if(dir_err != -1){
@@ -551,10 +554,10 @@ int uploadFile(){
             // Eg: \\hello.c_chunks\\4
 
             // Convert counter integer into string and append to name.
-            string counterString = NumberToString(counter); 
+            string counterString = NumberToString(counter);
 
             fullChunkName.clear();
-            fullChunkName.append(filepath+"/");
+            fullChunkName.append(filepath + "/");
             fullChunkName.append(counterString);
 
             // Open new chunk file name for output
@@ -574,7 +577,7 @@ int uploadFile(){
                 counter++;
             }
 
-        } 
+        }
         // Cleanup buffer
         delete (buffer);
 
@@ -605,34 +608,34 @@ int main()
     cout << "Enter IP address of P2P server: ";
     getline(cin, p2pserver_address);
 
-    pid = fork();
+    // pid = fork();
+    //
+    // if(pid == 0){
+    //     // Uncomment for child handling (only on linux)
+    //     // prctl(PR_SET_PDEATHSIG, SIGKILL);
+    //
+    //     mySock = socket(AF_INET, SOCK_STREAM, 0);
+    //  	memset(&myAddress,0,sizeof(myAddress));
+    // 	myAddress.sin_family = AF_INET;
+    // 	myAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+    // 	myAddress.sin_port = htons(PORT);
+    // 	bind(mySock,(struct sockaddr *)&myAddress, sizeof(myAddress));
+    //
+    //     listen(mySock,1);
+    //
+    //     socklen_t sosize  = sizeof(clientAddress);
+    //
+    //     while (1){
+    //         cnxnSock = accept(mySock, (struct sockaddr*)&clientAddress, &sosize);
+    //         // cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
+    //         thread slave(processDownloadFromClient, cnxnSock, inet_ntoa(clientAddress.sin_addr));
+    //         slave.detach();
+    //     }
+    //
+    //     close(mySock);
+    //     return 0;
 
-    if(pid == 0){
-        // Uncomment for child handling (only on linux)
-        // prctl(PR_SET_PDEATHSIG, SIGKILL);
-
-        mySock = socket(AF_INET, SOCK_STREAM, 0);
-     	memset(&myAddress,0,sizeof(myAddress));
-    	myAddress.sin_family = AF_INET;
-    	myAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-    	myAddress.sin_port = htons(PORT);
-    	bind(mySock,(struct sockaddr *)&myAddress, sizeof(myAddress));
-
-        listen(mySock,1);
-
-        socklen_t sosize  = sizeof(clientAddress);
-
-        while (1){
-            cnxnSock = accept(mySock, (struct sockaddr*)&clientAddress, &sosize);
-            // cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
-            thread slave(processDownloadFromClient, cnxnSock, inet_ntoa(clientAddress.sin_addr));
-            slave.detach();
-        }
-
-        close(mySock);
-        return 0;
-
-    } else {
+    // } else {
         do{
             displayOptions();
             cin >> op;
@@ -654,7 +657,7 @@ int main()
             }
 
         } while (op != 5);
-    }
+    // }
 
     quit();
 

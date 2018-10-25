@@ -10,7 +10,7 @@
 
 using namespace std;
 
-const int chunk_size = 131072;
+const int chunk_size = 1024;
 
 typedef string FILE_NAME;
 typedef int CHUNK_ID;
@@ -21,7 +21,7 @@ typedef unordered_map<FILE_NAME, CHUNK_IP_MAP> FILE_KNOWLEDGE_BASE;
 
 typedef unordered_set<CHUNK_ID> CHUNK_ID_LIST;
 typedef unordered_map<FILE_NAME, CHUNK_ID_LIST> FILE_CHUNK_MAP;
-typedef unordered_map<PEER_IP, FILE_CHUNK_MAP> PEER_KNOWLEDGE_BASE; 
+typedef unordered_map<PEER_IP, FILE_CHUNK_MAP> PEER_KNOWLEDGE_BASE;
 
 typedef int FILE_SIZE;
 
@@ -57,12 +57,12 @@ class Knowledge_Base{
 
     string listAllFiles();
     string getFileInfo(string fileName);
-    string downloadFile(string fileName);    
+    string downloadFile(string fileName);
     string getPeerForChunks(string fn, vector<int> chunkIDList);
-    void uploadNewFile(string ipAddr, string fileName, int fileSize);   
+    void uploadNewFile(string ipAddr, string fileName, int fileSize);
     void updatePeerFileChunkStatus(string ipAddr, string fileName, vector<int> chunkIDList);
 
-    void printEverything();   
+    void printEverything();
 
     bool isEmpty();
     bool containsFile(string fileName);
