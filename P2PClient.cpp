@@ -18,8 +18,8 @@
 #include <signal.h>
 
 // Uncomment in Linux for child handling
-#include <sys/prctl.h>
-#include <fcntl.h>
+// #include <sys/prctl.h>
+// #include <fcntl.h>
 #include "TCPClient.h"
 #include <mutex>
 #include <math.h>
@@ -333,7 +333,7 @@ void processDownloadFromClient(int sock, string clientAddr){
     string filename, response;
 
         if ((bytesRecved = recv(sock, buffer, SIZE, 0)) <= 0){
-            break;
+            return;
         }
 
         buffer[bytesRecved] = '\0';
@@ -361,7 +361,7 @@ void processDownloadFromClient(int sock, string clientAddr){
         while (1){
             /* First read file in chunks of BUF_SIZE bytes */
             unsigned char buffer[DEFAULT_CHUNK_SIZE]={0};
-            int nread = fread(buffer, 1, DEFAULT_CHUNK_SIZE, fp);
+            int nread = fread(buffer, 1, DEFAULT_CHUNK_SIZE, file);
             printf("Bytes read %d \n", nread);
 
             /* If read was success, send data. */
@@ -377,9 +377,9 @@ void processDownloadFromClient(int sock, string clientAddr){
              */
             if (nread < DEFAULT_CHUNK_SIZE)
             {
-                if (feof(fp))
+                if (feof(file))
                     printf("End of file\n");
-                if (ferror(fp))
+                if (ferror(file))
                     printf("Error reading\n");
                 break;
             }
@@ -636,7 +636,7 @@ int main()
 
     if(pid == 0){
         // Uncomment for child handling (only on linux)
-        prctl(PR_SET_PDEATHSIG, SIGKILL);
+        // prctl(PR_SET_PDEATHSIG, SIGKILL);
 
         mySock = socket(AF_INET, SOCK_STREAM, 0);
      	memset(&myAddress,0,sizeof(myAddress));
@@ -681,7 +681,7 @@ int main()
             }
 
         } while (op != 5);
-    // }
+     }
 
     quit();
 

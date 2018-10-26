@@ -97,7 +97,7 @@ bool TCPClient::send_data(string data)
 int TCPClient::receiveAndWriteToFile(string filepath)
 {
     /* Create file where data will be stored */
-    FILE *fp = fopen(filepath, "ab");
+    FILE *fp = fopen(filepath.c_str(), "ab");
     if(NULL == fp)
     {
         printf("Error opening file");
@@ -105,9 +105,9 @@ int TCPClient::receiveAndWriteToFile(string filepath)
     }
     /* Receive data in chunks of BUF_SIZE bytes */
     int bytesReceived = 0;
-    char buff[BUF_SIZE];
+    char buff[SIZE];
     memset(buff, '0', sizeof(buff));
-    while((bytesReceived = read(sockfd, buff, BUF_SIZE)) > 0)
+    while((bytesReceived = recv(sock, buff, SIZE, 0)) > 0)
     {
         printf("Bytes received %d\n",bytesReceived);
         fwrite(buff, 1, bytesReceived, fp);
