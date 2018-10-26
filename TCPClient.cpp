@@ -97,7 +97,7 @@ bool TCPClient::send_data(string data)
 int TCPClient::receiveAndWriteToFile(string filepath)
 {
     ofstream myfile;
-    myfile.open (filepath);
+    myfile.open(filepath);
 
     string fileData;
     string data;
@@ -109,11 +109,11 @@ int TCPClient::receiveAndWriteToFile(string filepath)
         }
     } while (data != "");
 
+    myfile << fileData;
+
     close(sock);
     myfile.close();
 
-
-    return fileData;
 }
 
 string TCPClient::read()
