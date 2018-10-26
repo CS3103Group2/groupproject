@@ -96,15 +96,27 @@ bool TCPClient::send_data(string data)
 */
 int TCPClient::receiveAndWriteToFile(string filepath)
 {
-    char buffer[SIZE];
-    int bytes_read;
-    ofstream file(filepath.c_str(), ios::out|ios::binary);
-    do {
-         bytes_read = recv(sock, buffer, sizeof(buffer), 0);
-         if (bytes_read > 0) {
-             file.write(buffer, bytes_read);
-         }
-    } while (bytes_read > 0);
+    /* Create file where data will be stored */
+    FILE *fp = fopen(filepath, "ab");
+    if(NULL == fp)
+    {
+        printf("Error opening file");
+        return 1;
+    }
+    /* Receive data in chunks of BUF_SIZE bytes */
+    int bytesReceived = 0;
+    char buff[BUF_SIZE];
+    memset(buff, '0', sizeof(buff));
+    while((bytesReceived = read(sockfd, buff, BUF_SIZE)) > 0)
+    {
+        printf("Bytes received %d\n",bytesReceived);
+        fwrite(buff, 1, bytesReceived, fp);
+    }
+
+    if(bytesReceived < 0)
+    {
+        printf("\n Read Error \n");
+    }
 
     return 0;
 }

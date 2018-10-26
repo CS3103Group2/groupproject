@@ -18,8 +18,8 @@
 #include <signal.h>
 
 // Uncomment in Linux for child handling
-// #include <sys/prctl.h>
-// #include <fcntl.h>
+#include <sys/prctl.h>
+#include <fcntl.h>
 #include "TCPClient.h"
 #include <mutex>
 #include <math.h>
@@ -140,6 +140,10 @@ int getUpdateFromServer(string filename){
         return -1;
     }
 
+    if(file_map_failed.empty()){
+        return 1;
+    }
+
     for (pair<int, string> element : file_map_failed)
     {
     	temp += " " + to_string(element.first) + " " + element.second;
@@ -149,6 +153,7 @@ int getUpdateFromServer(string filename){
     }
 
     query = generate_query(7, filename + temp);
+    cout << query;
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
@@ -159,7 +164,7 @@ int getUpdateFromServer(string filename){
     };
 
     if(result[0] == "0"){
-        cout << "File is unavailable for download." << endl;
+        cout << "File is unavailable for download. Server" << endl;
         exit(1);
     }
 
@@ -223,6 +228,7 @@ void handleDownloadFromPeer(string filename){
         mutx.unlock();
     }
 
+    cout << "Sending : " + filename + " " + to_string(chunkid) << endl;
     peerClient.send_data(filename + " " + to_string(chunkid));
     reply = peerClient.read();
 
@@ -287,10 +293,8 @@ int downloadFileFromPeers(string filename, int num_of_chunks){
     int count = 0;
     mutex mutx;
 
-    while(!file_map.empty() && !file_map_failed.empty()){
-
-        cout<< "WENT INTO REPEAT";
-        if(count == 2 || file_map.empty()){
+    while(!file_map.empty() || !file_map_failed.empty()){
+        if(count == 5 || file_map.empty()){
             getUpdateFromServer(filename);
             count = 0;
             if(!file_map_successful.empty()){
@@ -328,7 +332,6 @@ void processDownloadFromClient(int sock, string clientAddr){
     char buffer[SIZE];
     string filename, response;
 
-    while (1){
         if ((bytesRecved = recv(sock, buffer, SIZE, 0)) <= 0){
             break;
         }
@@ -347,20 +350,41 @@ void processDownloadFromClient(int sock, string clientAddr){
         FILE *file = fopen((filename + "_chunks/" + to_string(chunkid)).c_str(), "rb");
 
         if(file){
-            response = "0 \n";
+            response = "0\n";
             send(sock, response.c_str(), response.length(), 0);
             return;
+        } else {
+            response = "1\n";
+            send(sock, response.c_str(), response.length(), 0);
         }
 
-        fseek(file, 0, SEEK_END);
-        unsigned long filesize = ftell(file);
-        char *file_buffer = (char*)malloc(sizeof(char)*filesize);
-        rewind(file);
-        // store read data into buffer
-        fread(file_buffer, sizeof(char), filesize, file);
-        // send buffer to client
-        send(sock, buffer, filesize, 0);
-    }
+        while (1){
+            /* First read file in chunks of BUF_SIZE bytes */
+            unsigned char buffer[DEFAULT_CHUNK_SIZE]={0};
+            int nread = fread(buffer, 1, DEFAULT_CHUNK_SIZE, fp);
+            printf("Bytes read %d \n", nread);
+
+            /* If read was success, send data. */
+            if(nread > 0)
+            {
+                printf("Sending \n");
+                write(sock, buffer, nread);
+            }
+
+            /*
+             * There is something tricky going on with read ..
+             * Either there was error, or we reached end of file.
+             */
+            if (nread < DEFAULT_CHUNK_SIZE)
+            {
+                if (feof(fp))
+                    printf("End of file\n");
+                if (ferror(fp))
+                    printf("Error reading\n");
+                break;
+            }
+        }
+
 
     close(sock);
 
@@ -608,34 +632,34 @@ int main()
     cout << "Enter IP address of P2P server: ";
     getline(cin, p2pserver_address);
 
-    // pid = fork();
-    //
-    // if(pid == 0){
-    //     // Uncomment for child handling (only on linux)
-    //     // prctl(PR_SET_PDEATHSIG, SIGKILL);
-    //
-    //     mySock = socket(AF_INET, SOCK_STREAM, 0);
-    //  	memset(&myAddress,0,sizeof(myAddress));
-    // 	myAddress.sin_family = AF_INET;
-    // 	myAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-    // 	myAddress.sin_port = htons(PORT);
-    // 	bind(mySock,(struct sockaddr *)&myAddress, sizeof(myAddress));
-    //
-    //     listen(mySock,1);
-    //
-    //     socklen_t sosize  = sizeof(clientAddress);
-    //
-    //     while (1){
-    //         cnxnSock = accept(mySock, (struct sockaddr*)&clientAddress, &sosize);
-    //         // cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
-    //         thread slave(processDownloadFromClient, cnxnSock, inet_ntoa(clientAddress.sin_addr));
-    //         slave.detach();
-    //     }
-    //
-    //     close(mySock);
-    //     return 0;
+    pid = fork();
 
-    // } else {
+    if(pid == 0){
+        // Uncomment for child handling (only on linux)
+        prctl(PR_SET_PDEATHSIG, SIGKILL);
+
+        mySock = socket(AF_INET, SOCK_STREAM, 0);
+     	memset(&myAddress,0,sizeof(myAddress));
+    	myAddress.sin_family = AF_INET;
+    	myAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+    	myAddress.sin_port = htons(PORT);
+    	bind(mySock,(struct sockaddr *)&myAddress, sizeof(myAddress));
+
+        listen(mySock,1);
+
+        socklen_t sosize  = sizeof(clientAddress);
+
+        while (1){
+            cnxnSock = accept(mySock, (struct sockaddr*)&clientAddress, &sosize);
+            // cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
+            thread slave(processDownloadFromClient, cnxnSock, inet_ntoa(clientAddress.sin_addr));
+            slave.detach();
+        }
+
+        close(mySock);
+        return 0;
+
+    } else {
         do{
             displayOptions();
             cin >> op;
