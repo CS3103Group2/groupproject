@@ -97,23 +97,26 @@ bool TCPClient::send_data(string data)
 int TCPClient::receiveAndWriteToFile(string filepath)
 {
     ofstream myfile;
-    myfile.open(filepath);
+    myfile.open(filepath.c_str());
 
-    string fileData;
-    string data;
-    do{
-        data = read();
-        if (data != ""){
-            fileData += data.substr(0, data.length()-2);
-            fileData += "\n";
-        }
-    } while (data != "");
+    char buffer[1] = {};
+    char buff0[1] = {'a'}, buff1[1] = {'a'}, buff2[1] = {'a'};
+  	string reply;
+  	while ( buff0[0] != '\0' && buff1[0] != '\0' && buff2[0] != '\n' && buffer[0] != '\r') {
+    		if(recv(sock , buffer , sizeof(buffer) , 0) < 0){
+                cout << "receive failed!" << endl;
+                return -1;
+    		}
+        buff0[0] = buff1[0];
+        buff1[0] = buff2[0];
+        buff2[0] = buffer[0];
+		reply += buffer[0];
+	}
 
-    myfile << fileData;
-
-    close(sock);
+    cout << reply <<endl;
+    myfile << reply;
     myfile.close();
-
+    return 1;
 }
 
 string TCPClient::read()

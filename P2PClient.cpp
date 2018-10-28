@@ -84,7 +84,7 @@ string generate_query(int op, string input)
 
 }
 
-int connectToServer(TCPClient & tcp_client)
+int connectToServer(TCPClient &tcp_client)
 {
     int sock = -1;
     int count = 0;
@@ -107,11 +107,15 @@ int connectToServer(TCPClient & tcp_client)
 }
 
 
-int connectToClient(TCPClient & tcp_client, string ip_addr)
+int connectToClient(TCPClient &tcp_client, string ip_addr)
 {
     int sock = -1;
     int count = 0;
     do{
+        if(count != 0){
+            tcp_client = *(new TCPClient());
+        }
+
         sock = tcp_client.connectTo(ip_addr, PORT);
         count++;
 
@@ -209,6 +213,7 @@ void handleDownloadFromPeer(string filename){
     string ipaddr;
     TCPClient peerClient;
     string reply;
+    string filepath = filename + "_chunks";
 
     mutx.lock();
     if(file_map.empty()){
@@ -237,7 +242,7 @@ void handleDownloadFromPeer(string filename){
         mutx_for_failed.lock();
         file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
         mutx_for_failed.unlock();
-    } else if (peerClient.receiveAndWriteToFile(filename + "_chunks/" + to_string(chunkid)) < 0){
+    } else if (peerClient.receiveAndWriteToFile(filepath + "/" + to_string(chunkid)) < 0){
         mutx_for_failed.lock();
         file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
         mutx_for_failed.unlock();
@@ -253,46 +258,72 @@ void handleDownloadFromPeer(string filename){
 }
 
 
-int mergeAllFiles(string filename, int num_of_chunks){
-
-    int i;
-    ifstream read;
-    ofstream finalout;
-    string temp;
-
-    finalout.open(filename);
-
-    if(!finalout)
-    {
-        cout << "Oops something went wrong with the file." << endl;
-    }
-
-    for(i = 0; i < num_of_chunks; i++)
-    {
-        try {
-          read.open(filename + "/" + to_string(i));
-        }
-        catch (ios_base::failure& e) {
-          cerr << e.what() << '\n';
-        }
-        while(read.eof() == 0)
-        {
-            getline(read, temp);
-            finalout << temp;
-        }
-        finalout << "\n";
-        read.close();
-        read.clear();
-    }
-
-    finalout.close();
-    return 0;
+int getFileSize(ifstream *file) {
+    file->seekg(0,ios::end);
+    int filesize = file->tellg();
+    file->seekg(ios::beg);
+    return filesize;
 }
+
+
+void joinFile(string filename) {
+    string fileName;
+
+    // Create our output file
+    ofstream outputfile;
+    outputfile.open(filename.c_str(), ios::out | ios::binary);
+
+    // If successful, loop through chunks matching chunkName
+    if (outputfile.is_open()) {
+        bool filefound = true;
+        int counter = 1;
+        int fileSize = 0;
+
+        while (filefound) {
+
+            filefound = false;
+            // Build the filename
+            fileName.clear();
+            fileName.append(filename + "_chunks/");
+            fileName.append(to_string(counter));
+
+            // Open chunk to read
+            ifstream fileInput;
+            fileInput.open(fileName.c_str(), ios::in | ios::binary);
+            // If chunk opened successfully, read it and write it to
+            // output file.
+            if (fileInput.is_open()) {
+                filefound = true;
+                fileSize = getFileSize(&fileInput);
+                char *inputBuffer = new char[fileSize];
+                fileInput.read(inputBuffer,fileSize);
+                outputfile.write(inputBuffer,fileSize);
+                delete(inputBuffer);
+                fileInput.close();
+            }
+            counter++;
+        }
+        // Close output file.
+        outputfile.close();
+
+        // cout << "File assembly complete!" << endl;
+    }
+
+    else { cout << "Error: Unable to open file for output." << endl; }
+
+}
+
 
 int downloadFileFromPeers(string filename, int num_of_chunks){
 
     int count = 0;
     mutex mutx;
+
+    string filepath = filename + "_chunks";
+    const int dir_err = mkdir(filepath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    if(dir_err != -1){
+        cout << "Folder created!" << endl;
+    }
 
     while(!file_map.empty() || !file_map_failed.empty()){
         if(count == 5 || file_map.empty()){
@@ -320,64 +351,100 @@ int downloadFileFromPeers(string filename, int num_of_chunks){
     }
 
     updateServerOnAvailableChunks(filename);
-    mergeAllFiles(filename, num_of_chunks);
+    joinFile(filename);
 
     cout << "Download successful!" << endl;
     return 1;
 }
 
 
+bool senddata(int sock, void *buf, int buflen)
+{
+    unsigned char *pbuf = (unsigned char *) buf;
+
+    while (buflen > 0)
+    {
+        int num = send(sock, pbuf, buflen, 0);
+        if (num == -1)
+        {
+            return false;
+        }
+
+        pbuf += num;
+        buflen -= num;
+    }
+
+
+    return true;
+}
+
+
+bool sendfile(int sock, FILE *f)
+{
+
+    fseek(f, 0, SEEK_END);
+            long filesize = ftell(f);
+             rewind(f);
+             if (filesize == EOF)
+                 return false;
+    if (filesize > 0)
+    {
+        char buffer[DEFAULT_CHUNK_SIZE];
+        do
+        {
+            size_t num = DEFAULT_CHUNK_SIZE;
+            num = fread(buffer, 1, num, f);
+            if (num < 1)
+                return false;
+            if (!senddata(sock, buffer, num))
+                return false;
+            filesize -= num;
+        }
+        while (filesize > 0);
+	string terminatechar = "\0\0\r\n";
+	send(sock, terminatechar.c_str(), terminatechar.length(), 0);
+    }
+    return true;
+}
+
+
+
 void processDownloadFromClient(int sock, string clientAddr){
 
-    int bytesRecved, chunkid;
-    char buffer[SIZE];
-    string filename, response;
+    int bytesRecved;
+    char buffer[DEFAULT_CHUNK_SIZE];
 
-        if ((bytesRecved = recv(sock, buffer, SIZE, 0)) <= 0){
-            return;
+    while (1){
+        if ((bytesRecved = recv(sock, buffer, DEFAULT_CHUNK_SIZE, 0)) <= 0){
+            break;
         }
-
         buffer[bytesRecved] = '\0';
-        cout <<"Thread connecting to " << clientAddr << " has received " << buffer << endl;
-        string msg(buffer);
+        // cout <<"Thread connecting to " << clientAddr << " has received " << buffer << endl;
+        string message(buffer);
+        string response;
+
         regex ws_re("\\s+");
         vector<string> result{
-            sregex_token_iterator(msg.begin(), msg.end(), ws_re, -1), {}
+            sregex_token_iterator(message.begin(), message.end(), ws_re, -1), {}
         };
 
-        filename = result[0];
-        chunkid = stoi(result[1]);
-
-        ifstream myfile((filename + "_chunks/" + to_string(chunkid)).c_str());
-
-        if(!myfile.is_open()){
-            response = "0\n";
-            send(sock, response.c_str(), response.length(), 0);
-            return;
-        } else {
+        FILE *filehandle = fopen((result[0] + "_chunks/" + result[1]).c_str(), "rb");
+        if (filehandle != NULL)
+        {
             response = "1\n";
             send(sock, response.c_str(), response.length(), 0);
+            sendfile(sock, filehandle);
+		    sleep(2);
+            fclose(filehandle);
+            break;
+        } else {
+            response = "0\n";
+            send(sock, response.c_str(), response.length(), 0);
+            break;
         }
-
-        string fileContent;
-        string line;
-        while (getline(myfile, line))
-        {
-            fileContent += line;
-            fileContent += "\r\n";
-        }
-        if(sock != -1)
-    	{
-    		if( send(sock , fileContent.c_str() , strlen( fileContent.c_str() ) , 0) < 0)
-    		{
-    			cout << "Send failed : " << fileContent << endl;
-    			return;
-    		}
-            close(sock);
-    	}
-    	else
-    		return;
-
+    }
+    close(sock);
+	return;
 }
 
 /*****************************************************************************
@@ -477,17 +544,6 @@ int downloadFile()
     downloadFileFromPeers(filename, num_of_chunks);
 }
 
-int getFileSize(ifstream *file) {
-
-    file->seekg(0, ios::end);
-
-    int filesize = file->tellg();
-
-    file->seekg(ios::beg);
-
-    return filesize;
-
-}
 
 // template to convert Number to string
 template<typename T> string NumberToString(T Number) {
