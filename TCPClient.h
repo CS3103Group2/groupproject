@@ -33,5 +33,6 @@ public:
   bool send_data(string data);
   int receiveAndWriteToFile(string filepath);
   string read();
+  string readAllFiles(int);
   void exit();
 };
