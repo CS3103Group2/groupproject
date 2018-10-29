@@ -32,6 +32,7 @@ public:
   int connectTo(string address, int port);
   bool send_data(string data);
   int receiveAndWriteToFile(string filepath);
+  string readn();
   string read();
   void exit();
 };

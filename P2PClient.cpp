@@ -208,54 +208,6 @@ void updateServerOnAvailableChunks(string filename){
 
 }
 
-void handleDownloadFromPeer(string filename){
-    int chunkid, status;
-    string ipaddr;
-    TCPClient peerClient;
-    string reply;
-    string filepath = filename + "_chunks";
-
-    mutx.lock();
-    if(file_map.empty()){
-        mutx.unlock();
-        return;
-    }
-    auto random_pair = next(begin(file_map), (rand() % file_map.size()));
-    chunkid = random_pair->first;
-    ipaddr = random_pair->second;
-    file_map.erase(chunkid);
-    mutx.unlock();
-
-    if(connectToClient(peerClient, ipaddr) == -1){
-        //Add pair back into filemap
-        mutx.lock();
-        file_map.insert((pair<int,string>) make_pair(chunkid, ipaddr));
-        mutx.unlock();
-        return;
-    }
-
-    cout << "Sending : " + filename + " " + to_string(chunkid) << endl;
-    peerClient.send_data(filename + " " + to_string(chunkid));
-    reply = peerClient.read();
-
-    if(reply[0] == '0') {
-        mutx_for_failed.lock();
-        file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
-        mutx_for_failed.unlock();
-    } else if (peerClient.receiveAndWriteToFile(filepath + "/" + to_string(chunkid)) < 0){
-        mutx_for_failed.lock();
-        file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
-        mutx_for_failed.unlock();
-    }
-    peerClient.exit();
-
-    mutx_for_successful.lock();
-    file_map_successful.insert((pair<int,string>) make_pair(chunkid, ipaddr));
-    mutx_for_successful.unlock();
-
-    return;
-
-}
 
 
 int getFileSize(ifstream *file) {
@@ -313,8 +265,61 @@ void joinFile(string filename) {
 
 }
 
+void downloadChunkFromPeer(string filename){
+    int chunkid, status;
+    string ipaddr;
+    TCPClient peerClient;
+    string reply;
+    string filepath = filename + "_chunks";
 
-int downloadFileFromPeers(string filename, int num_of_chunks){
+    mutx.lock();
+    if(file_map.empty()){
+        mutx.unlock();
+        return;
+    }
+    auto random_pair = next(begin(file_map), (rand() % file_map.size()));
+    chunkid = random_pair->first;
+    ipaddr = random_pair->second;
+    file_map.erase(chunkid);
+    mutx.unlock();
+
+    if(connectToClient(peerClient, ipaddr) == -1){
+        //Add pair back into filemap
+        mutx.lock();
+        file_map.insert((pair<int,string>) make_pair(chunkid, ipaddr));
+        mutx.unlock();
+        return;
+    }
+
+    cout << "Sending : " + filename + " " + to_string(chunkid) << endl;
+    peerClient.send_data(filename + " " + to_string(chunkid));
+    reply = peerClient.read();
+
+    if(reply[0] == '0') {
+        cout << "RESPONSE: 0" << endl;
+        mutx_for_failed.lock();
+        file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
+        mutx_for_failed.unlock();
+        return;
+    } else if (peerClient.receiveAndWriteToFile(filepath + "/" + to_string(chunkid)) < 0){
+        cout << "RESPONSE: 1" << endl;
+        mutx_for_failed.lock();
+        file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
+        mutx_for_failed.unlock();
+        return;
+    }
+    peerClient.exit();
+
+    cout << "EXITED" << endl;
+    mutx_for_successful.lock();
+    file_map_successful.insert((pair<int,string>) make_pair(chunkid, ipaddr));
+    mutx_for_successful.unlock();
+
+    return;
+
+}
+
+int downloadFromPeers(string filename, int num_of_chunks){
 
     int count = 0;
     mutex mutx;
@@ -334,18 +339,17 @@ int downloadFileFromPeers(string filename, int num_of_chunks){
             }
         }
 
-        thread thread_obj1(handleDownloadFromPeer, filename);
-        thread thread_obj2(handleDownloadFromPeer, filename);
-        thread thread_obj3(handleDownloadFromPeer, filename);
-        thread thread_obj4(handleDownloadFromPeer, filename);
-        thread thread_obj5(handleDownloadFromPeer, filename);
+        thread thread_obj1(downloadChunkFromPeer, filename);
+        // thread thread_obj2(downloadChunkFromPeer, filename);
+        // thread thread_obj3(downloadChunkFromPeer, filename);
+        // thread thread_obj4(downloadChunkFromPeer, filename);
+        // thread thread_obj5(downloadChunkFromPeer, filename);
 
-        cout << "CREATED " + count << endl;
         thread_obj1.join();
-        thread_obj2.join();
-        thread_obj3.join();
-        thread_obj4.join();
-        thread_obj5.join();
+        // thread_obj2.join();
+        // thread_obj3.join();
+        // thread_obj4.join();
+        // thread_obj5.join();
 
         count++;
     }
@@ -409,7 +413,7 @@ bool sendfile(int sock, FILE *f)
 
 
 
-void processDownloadFromClient(int sock, string clientAddr){
+void handleDownloadRequestFromPeer(int sock, string clientAddr){
 
     int bytesRecved;
     char buffer[DEFAULT_CHUNK_SIZE];
@@ -419,7 +423,7 @@ void processDownloadFromClient(int sock, string clientAddr){
             break;
         }
         buffer[bytesRecved] = '\0';
-        // cout <<"Thread connecting to " << clientAddr << " has received " << buffer << endl;
+        cout <<"Thread connecting to " << clientAddr << " has received " << buffer << endl;
         string message(buffer);
         string response;
 
@@ -431,19 +435,25 @@ void processDownloadFromClient(int sock, string clientAddr){
         FILE *filehandle = fopen((result[0] + "_chunks/" + result[1]).c_str(), "rb");
         if (filehandle != NULL)
         {
+            cout << "RESPONSE: 1" << endl;
             response = "1\n";
             send(sock, response.c_str(), response.length(), 0);
             sendfile(sock, filehandle);
+            cout << "FILESENT" << endl;
 		    sleep(2);
             fclose(filehandle);
             break;
         } else {
+            cout << "RESPONSE: 0" << endl;
             response = "0\n";
             send(sock, response.c_str(), response.length(), 0);
+            fclose(filehandle);
             break;
         }
     }
+    cout << "FILE CLOSE" << endl;
     close(sock);
+    cout << "SOCK CLOSE" << endl;
 	return;
 }
 
@@ -541,7 +551,7 @@ int downloadFile()
         }
     }
 
-    downloadFileFromPeers(filename, num_of_chunks);
+    downloadFromPeers(filename, num_of_chunks);
 }
 
 
@@ -698,7 +708,7 @@ int main()
         while (1){
             cnxnSock = accept(mySock, (struct sockaddr*)&clientAddress, &sosize);
             cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
-            thread slave(processDownloadFromClient, cnxnSock, inet_ntoa(clientAddress.sin_addr));
+            thread slave(handleDownloadRequestFromPeer, cnxnSock, inet_ntoa(clientAddress.sin_addr));
             slave.detach();
         }
 

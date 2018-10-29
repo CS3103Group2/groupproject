@@ -94,40 +94,77 @@ bool TCPClient::send_data(string data)
 /**
     Receive data from the connected host
 */
+
+
 int TCPClient::receiveAndWriteToFile(string filepath)
 {
     ofstream myfile;
     myfile.open(filepath.c_str());
 
-    char buffer[1] = {};
-    char buff0[1] = {'a'}, buff1[1] = {'a'}, buff2[1] = {'a'};
-  	string reply;
-  	while ( buff0[0] != '\0' && buff1[0] != '\0' && buff2[0] != '\n' && buffer[0] != '\r') {
-    		if(recv(sock , buffer , sizeof(buffer) , 0) < 0){
-                cout << "receive failed!" << endl;
-                return -1;
-    		}
-        buff0[0] = buff1[0];
-        buff1[0] = buff2[0];
-        buff2[0] = buffer[0];
-		reply += buffer[0];
-	}
+    // char buffer[1] = {};
+    // char buff0[1] = {'a'}, buff1[1] = {'a'}, buff2[1] = {'a'};
+  	// string reply;
+  	// while ( buff0[0] != '\0' && buff1[0] != '\0' && buff2[0] != '\n' && buffer[0] != '\r') {
+    // 		if(recv(sock , buffer , sizeof(buffer) , 0) < 0){
+    //             cout << "receive failed!" << endl;
+    //             return -1;
+    // 		}
+    //     buff0[0] = buff1[0];
+    //     buff1[0] = buff2[0];
+    //     buff2[0] = buffer[0];
+	// 	reply += buffer[0];
+	// }
+    string fileData;
+    string data;
 
-    cout << reply <<endl;
-    myfile << reply;
+    do{
+        cout << "KEEPS READING" << endl;
+        data = read();
+        if (data != ""){
+            fileData += data.substr(0, data.length());
+            // fileData += "\n";
+        }
+        cout << data << endl;
+    } while (data != "");
+
+    cout << fileData <<endl;
+    myfile << fileData;
     myfile.close();
+    cout << "FILEWRITTEN AND CLOSED" << endl;
     return 1;
 }
+//
+// string TCPClient::readn()
+// {
+//   	char buffer[1] = {};
+//   	string reply;
+//   	while (buffer[0] != '\n') {
+//     		if(recv(sock , buffer , sizeof(buffer) , 0) <= 0){
+//                 cout << "receive failed!" << endl;
+// 			    return "";
+//     		}
+// 		reply += buffer[0];
+// 	}
+//     cout << "REPLY: " + reply << endl;
+//     sleep(2);
+// 	return reply;
+// }
 
 string TCPClient::read()
 {
-  	char buffer[1] = {};
-  	string reply;
+    char buffer[1] = {};
+  	string reply = "";
+	int rcvd;
   	while (buffer[0] != '\n') {
-    		if(recv(sock , buffer , sizeof(buffer) , 0) < 0){
-                cout << "receive failed!" << endl;
-			    return "";
-    		}
+		rcvd = recv(sock , buffer , sizeof(buffer) , 0);
+		if(rcvd < 0)
+		{
+			cout << "receive failed!" << endl;
+			return NULL;
+		}
+		if (rcvd == 0){
+			return reply;
+		}
 		reply += buffer[0];
 	}
 	return reply;
