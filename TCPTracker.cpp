@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/types.h>
+#include <sys/types.h> 
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string.h>
@@ -22,9 +22,13 @@ Knowledge_Base KB;
 
 void handleList(string &response){
     if (!KB.isEmpty()){
-        response = "1" + KB.listAllFiles() + "\r\n";
+        response = KB.listAllFiles() + "\r\n";
     } else{
+<<<<<<< HEAD
+        response = "There are currently no files in the network.\n";
+=======
         response = "0 There are currently no files in the network.\r\n";
+>>>>>>> List&Query
     }
 }
 
@@ -74,6 +78,16 @@ void handleUpdate(string clientAddr, vector<string> incomingMsg, string &respons
 
 void handleGetChunks(vector<string> &incomingMsg, string & response){
     vector<int> chunkIDList;
+<<<<<<< HEAD
+    for (int i=2; i < (incomingMsg.size()-1); i++){ // last item should be \r\n
+        chunkIDList.push_back(stoi(incomingMsg[i]));
+    }
+    if (KB.containsFile(incomingMsg[1])){
+        response = "1 ";
+        response += KB.getPeerForChunks(incomingMsg[1], chunkIDList);
+    } else{
+        response = "0 \n";
+=======
     for (int i=2; i < incomingMsg.size(); i++){
         chunkIDList.push_back(stoi(incomingMsg[i]));
     }
@@ -82,6 +96,7 @@ void handleGetChunks(vector<string> &incomingMsg, string & response){
         response += KB.getPeerForChunks(incomingMsg[1], chunkIDList) + "\r\n";
     } else{
         response = "0\r\n";
+>>>>>>> List&Query
     }
 }
 
@@ -101,13 +116,21 @@ void processIncomingMessage(string message, string &response, string clientAddr)
     } else if (code == "4"){
         handleUpload(clientAddr, result[1], stoi(result[2]), response);
     } else if (code == "5"){
+<<<<<<< HEAD
+        handleExit(clientAddr, response);            
+=======
         handleExit(clientAddr, response);
+>>>>>>> List&Query
     } else if (code == "6"){ // update peer's chunk status
         handleUpdate(clientAddr, result, response);
     } else if (code == "7"){
         handleGetChunks(result,response);
     } else{
+<<<<<<< HEAD
+        response = "Action is not defined!\n";
+=======
         response = "0 Action is not defined!\r\n";
+>>>>>>> List&Query
     }
 }
 
@@ -139,25 +162,34 @@ int main(int argc, char const *argv[])
     string str;
 	struct sockaddr_in serverAddress;
     struct sockaddr_in clientAddress;
-
+    
     serverSock=socket(AF_INET,SOCK_STREAM,0);
  	memset(&serverAddress,0,sizeof(serverAddress));
 	serverAddress.sin_family=AF_INET;
 	serverAddress.sin_addr.s_addr=htonl(INADDR_ANY);
 	serverAddress.sin_port=htons(P2PPort);
 	bind(serverSock,(struct sockaddr *)&serverAddress, sizeof(serverAddress));
-
+    
     listen(serverSock,1);
 
     socklen_t sosize  = sizeof(clientAddress);
 
+    //Testing Area
+    KB.uploadNewFile("1.1.1.1", "Test.txt", 1000000);
+    KB.uploadNewFile("192.168.1.2", "Tatsh.txt", 2000000);
+    KB.uploadNewFile("220.255.12.10", "Mirai.txt", 3000000);
+    KB.uploadNewFile("120.245.13.10", "Osu.txt", 4000000);
+    KB.uploadNewFile("150.15.243.109", "Wizard.txt", 5000000); 
+
     while (1){
         cnxnSock = accept(serverSock,(struct sockaddr*)&clientAddress,&sosize);
         cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
-        thread slave(threadHandler, cnxnSock, inet_ntoa(clientAddress.sin_addr));
+        thread slave(threadHandler, cnxnSock, inet_ntoa(clientAddress.sin_addr));   
         slave.detach();
     }
 
     close(serverSock);
     return 0;
 }
+
+

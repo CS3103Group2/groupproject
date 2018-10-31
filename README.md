@@ -3,4 +3,5 @@
 compile tracker:
 g++ -o tracker TCPTracker.cpp P2PDB.cpp -std=c++11 -pthread
 
-compile P2PClient:
+compile runner:
+g++ -o client TCPClient.cpp P2PClient.cpp -std=c++11
