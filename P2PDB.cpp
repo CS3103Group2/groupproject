@@ -42,9 +42,57 @@ void Knowledge_Base::writerUnlock(){
     wmutex.unlock();                  //release exit section
 }
 
+PEER_IP IP_MAP::getOTNMapping(PEER_IP oldIP){
+    IP_MAPPING::const_iterator itr = ord_to_new.find(oldIP);
+    if (itr != ord_to_new.end()){
+        return itr->second;
+    }
+}
 
-void Knowledge_Base::createNewPeer(string ipAddr){
-    return;
+PEER_IP IP_MAP::getNTOMapping(PEER_IP newIP){
+    IP_MAPPING::const_iterator itr = new_to_ord.find(newIP);
+    if (itr != new_to_old.end())
+    {
+        return itr->second;
+    }
+}
+
+void IP_MAP::updatePeerIP(PEER_IP oldIP, PEER_IP newIP){
+    
+    PEER_IP originalIP = new_to_ord[oldIP];
+    ord_to_new[originalIP] = newIP;
+    new_to_ord.erase(oldIP);
+    new_to_ord[newIP] = originalIP;
+}
+
+void IP_MAP::createPeer(PEER_IP ip){
+    ord_to_new[ip] = ip;
+    new_to_ord[ip] = ip;
+}
+
+PEER_IP IP_MAP::removePeer(PEER_IP IP){
+    PEER_IP originalIP = new_to_ord[IP];
+    ord_to_new.erase(originalIP);
+    new_to_ord.erase(IP);
+    return originalIP;
+}
+
+bool IP_MAP::peerExists(PEER_IP oldIP){
+    IP_MAPPING::const_iterator itr = new_to_ord.find(oldIP);
+    return itr != new_to_ord.end();
+}
+
+void Knowledge_Base::updatePeerIP(string oldIP, string newIP)
+{
+    writerLock();
+
+    if (IpMapping.peerExists(oldIP)){
+        IpMapping.updatePeerIP(oldIP, newIP);
+    } else{
+        IpMapping.createPeer(newIP);
+    }
+
+    writerUnlock();
 }
 
 void Knowledge_Base::removeFileFromFileList(FILE_NAME fileName){
@@ -77,17 +125,18 @@ void Knowledge_Base::removePeer(string ipAddr){
 
     writerLock();
     // user information from peer list to remove in file list
-    PEER_KNOWLEDGE_BASE::const_iterator itr = Peer_List.find(ipAddr);
+    PEER_IP originalIP = IpMapping.removePeer(ipAddr);
+    PEER_KNOWLEDGE_BASE::const_iterator itr = Peer_List.find(originalIP);
     if (itr != Peer_List.end()){
         FILE_CHUNK_MAP fileInfoToRemove = itr->second;
         for (auto it = fileInfoToRemove.begin(); it != fileInfoToRemove.end(); ++it){
             FILE_NAME fileName = it->first;
             CHUNK_ID_LIST chunkIdLst = it->second;
-            removePeerFromFileList(fileName, chunkIdLst, ipAddr);
+            removePeerFromFileList(fileName, chunkIdLst, originalIP);
         }
     }
     // remove user from peer list
-    Peer_List.erase(ipAddr);
+    Peer_List.erase(originalIP);
 
     writerUnlock();
 }
@@ -133,7 +182,7 @@ string Knowledge_Base::downloadFile(string fileName){
     for (auto itr: File_List[fileName]){
         returnStr += " " + to_string(itr.first);    //chunk id
         randomNo = rand() % itr.second.size();
-        returnStr += " " + itr.second[randomNo]; // random peer IP
+        returnStr += " " + IpMapping.getOTNMapping(itr.second[randomNo]); // random peer IP
     }
 
     readerUnlock();
@@ -170,19 +219,10 @@ string Knowledge_Base::getPeerForChunks(string fn, vector<int> chunkIDList){
 
     for (auto id: chunkIDList){
         itr = temp.find(id);
-<<<<<<< HEAD
-        returnStr += to_string(id) + " ";
-        randomNo = rand() % itr->second.size();
-        returnStr += itr->second[randomNo] + " "; // random peer IP
-    }
-    
-    returnStr += "\r\n";
-=======
         returnStr += " " + to_string(id);
         randomNo = rand() % itr->second.size();
-        returnStr += " " + itr->second[randomNo]; // random peer IP
+        returnStr += " " + IpMapping.getOTNMapping(itr->second[randomNo]); // random peer IP
     }
->>>>>>> List&Query
 
     readerUnlock();
 
@@ -193,8 +233,10 @@ string Knowledge_Base::getPeerForChunks(string fn, vector<int> chunkIDList){
 void Knowledge_Base::uploadNewFile(string ipAddr, string fileName, int fileSize){
 
     writerLock();
+
+    PEER_IP originalIP = IpMapping.getNTOMapping(ipAddr);
     // update peer list
-    FILE_CHUNK_MAP &userFileChunkMap = Peer_List[ipAddr];
+    FILE_CHUNK_MAP &userFileChunkMap = Peer_List[originalIP];
     CHUNK_ID_LIST fullChunkIDList;
     int num_chunks = ceil((double)fileSize / (double)chunk_size);
     for (int i=1; i<= num_chunks; i++){
@@ -206,7 +248,7 @@ void Knowledge_Base::uploadNewFile(string ipAddr, string fileName, int fileSize)
     FILE_KNOWLEDGE_BASE::const_iterator itr = File_List.find(fileName);
     if (itr == File_List.end()){
         PEER_IP_LIST peerIPList;
-        peerIPList.push_back(ipAddr);
+        peerIPList.push_back(originalIP);
         CHUNK_IP_MAP chunkIPMap;
         for (int i=1; i<= num_chunks; i++){
             chunkIPMap[i] = peerIPList;
@@ -252,8 +294,10 @@ void Knowledge_Base::printEverything(){
 void Knowledge_Base::updatePeerFileChunkStatus(string ipAddr, string fileName, vector<int> chunkIDListToAdd){
     writerLock();
 
+    PEER_IP originalIP = IpMapping.getNTOMapping(ipAddr);
+
     // update Peer List
-    CHUNK_ID_LIST &chunkIDList = Peer_List[ipAddr][fileName];
+    CHUNK_ID_LIST &chunkIDList = Peer_List[originalIP][fileName];
     for (auto i: chunkIDListToAdd){
         chunkIDList.insert(i);
     }
@@ -261,7 +305,7 @@ void Knowledge_Base::updatePeerFileChunkStatus(string ipAddr, string fileName, v
     //update File List
     CHUNK_IP_MAP &chunkIPMap = File_List[fileName];
     for (auto i: chunkIDListToAdd){
-        chunkIPMap[i].push_back(ipAddr);
+        chunkIPMap[i].push_back(originalIP);
     }
 
     writerUnlock();
