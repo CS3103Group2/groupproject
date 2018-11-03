@@ -170,7 +170,26 @@ string TCPClient::read()
 	return reply;
 }
 
+string TCPClient::readAllFiles(int size = 512)
+{
+  	char buffer[size];
+  	string reply;
+	string test;
+
+    	if(recv(sock , buffer , sizeof(buffer) , 0) < 0) {
+        	cout << "receive failed!" << endl;
+	return ""; 
+	}
+
+	cout << endl;
+
+	reply = buffer;
+	return reply;
+
+}
+
 void TCPClient::exit()
 {
     close(sock);
 }
+

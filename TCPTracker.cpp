@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/types.h>
+#include <sys/types.h> 
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string.h>
@@ -22,7 +22,7 @@ Knowledge_Base KB;
 
 void handleList(string &response){
     if (!KB.isEmpty()){
-        response = "1" + KB.listAllFiles() + "\r\n";
+        response = KB.listAllFiles() + "\r\n";
     } else{
         response = "0 There are currently no files in the network.\r\n";
     }
@@ -44,7 +44,11 @@ void handleDownload(string fileName, string &response){
     }
 }
 
-void handleUpload(string ipAddr, string fileName, int fileSize, string &response){
+void handleUpload(vector<string> incomingMsg, string &response)
+{
+    string ipAddr = incomingMsg[1];
+    string fileName = incomingMsg[2];
+    int fileSize = stoi(incomingMsg[3]);
     if (KB.containsFile(fileName)){
         response = "0 A file of this name already exists. Rename the file and try again.\r\n";
         return;
@@ -53,23 +57,25 @@ void handleUpload(string ipAddr, string fileName, int fileSize, string &response
     response = "1\r\n";
 }
 
-void handleExit(string clientAddr, string &response){
-    KB.removePeer(clientAddr);
+void handleExit(vector<string> incomingMsg, string &response)
+{
+    KB.removePeer(incomingMsg[1]);
     response = "1 You selfish bastard =D.\r\n";
 }
 
-void handleUpdate(string clientAddr, vector<string> incomingMsg, string &response){
+void handleUpdateChunk(vector<string> incomingMsg, string &response){
     vector<int> chunkIDList;
-    for (int i=2; i < incomingMsg.size(); i++){
+    string clientIP = incomingMsg[1];
+    for (int i=3; i < incomingMsg.size(); i++){ 
         chunkIDList.push_back(stoi(incomingMsg[i]));
     }
-    if (KB.containsFile(incomingMsg[1])){
-        KB.updatePeerFileChunkStatus(clientAddr, incomingMsg[1], chunkIDList);
+    if (KB.containsFile(incomingMsg[2])){
+        KB.updatePeerFileChunkStatus(clientIP, incomingMsg[2], chunkIDList);
         response = "1\r\n";
     } else{
         response = "0\r\n";
     }
-
+    
 }
 
 void handleGetChunks(vector<string> &incomingMsg, string & response){
@@ -85,7 +91,13 @@ void handleGetChunks(vector<string> &incomingMsg, string & response){
     }
 }
 
-void processIncomingMessage(string message, string &response, string clientAddr){
+void handleUpdateIP(vector<string> &incomingMsg, string &response){
+    KB.updatePeerIP(incomingMsg[1], incomingMsg[2]);
+    response = "1\r\n";
+}
+
+void processIncomingMessage(string message, string &response)
+{
 
     regex ws_re("\\s+");
     vector<string> result{
@@ -99,19 +111,21 @@ void processIncomingMessage(string message, string &response, string clientAddr)
     } else if (code == "3"){
         handleDownload(result[1], response);
     } else if (code == "4"){
-        handleUpload(clientAddr, result[1], stoi(result[2]), response);
-    } else if (code == "5"){
-        handleExit(clientAddr, response);
+        handleUpload(result, response);
+    } else if (code == "5"){         
+        handleExit(result, response);
     } else if (code == "6"){ // update peer's chunk status
-        handleUpdate(clientAddr, result, response);
+        handleUpdateChunk(result, response);
     } else if (code == "7"){
-        handleGetChunks(result,response);
+        handleGetChunks(result, response);
+    } else if (code == "8"){
+        handleUpdateIP(result, response);
     } else{
         response = "0 Action is not defined!\r\n";
     }
 }
 
-void threadHandler(int sock, string clientAddr){
+void threadHandler(int sock){
 
     int bytesRecved;
     char buffer[MAXBUFFERSIZE];
@@ -124,7 +138,7 @@ void threadHandler(int sock, string clientAddr){
         //cout <<"Thread connecting to " << clientAddr << " has received " << buffer << endl;
         string msg(buffer);
         string response;
-        processIncomingMessage(msg, response, clientAddr);
+        processIncomingMessage(msg, response);
         send(sock, response.c_str(), response.length(), 0);
     }
 
@@ -133,31 +147,40 @@ void threadHandler(int sock, string clientAddr){
 }
 
 
-int main(int argc, char const *argv[])
+main(int argc, char const *argv[])
 {
     int serverSock, cnxnSock;
     string str;
 	struct sockaddr_in serverAddress;
     struct sockaddr_in clientAddress;
-
+    
     serverSock=socket(AF_INET,SOCK_STREAM,0);
  	memset(&serverAddress,0,sizeof(serverAddress));
 	serverAddress.sin_family=AF_INET;
 	serverAddress.sin_addr.s_addr=htonl(INADDR_ANY);
 	serverAddress.sin_port=htons(P2PPort);
 	bind(serverSock,(struct sockaddr *)&serverAddress, sizeof(serverAddress));
-
+    
     listen(serverSock,1);
 
     socklen_t sosize  = sizeof(clientAddress);
 
+    //Testing Area
+    KB.uploadNewFile("1.1.1.1", "Test.txt", 1000000);
+    KB.uploadNewFile("192.168.1.2", "Tatsh.txt", 2000000);
+    KB.uploadNewFile("220.255.12.10", "Mirai.txt", 3000000);
+    KB.uploadNewFile("120.245.13.10", "Osu.txt", 4000000);
+    KB.uploadNewFile("150.15.243.109", "Wizard.txt", 5000000); 
+
     while (1){
         cnxnSock = accept(serverSock,(struct sockaddr*)&clientAddress,&sosize);
         cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
-        thread slave(threadHandler, cnxnSock, inet_ntoa(clientAddress.sin_addr));
+        thread slave(threadHandler, cnxnSock);   
         slave.detach();
     }
 
     close(serverSock);
     return 0;
 }
+
+
