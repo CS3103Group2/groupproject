@@ -10,7 +10,7 @@
 
 using namespace std;
 
-const int chunk_size = 131072;
+const int chunk_size = 1024;
 
 typedef string FILE_NAME;
 typedef int CHUNK_ID;
@@ -21,7 +21,9 @@ typedef unordered_map<FILE_NAME, CHUNK_IP_MAP> FILE_KNOWLEDGE_BASE;
 
 typedef unordered_set<CHUNK_ID> CHUNK_ID_LIST;
 typedef unordered_map<FILE_NAME, CHUNK_ID_LIST> FILE_CHUNK_MAP;
-typedef unordered_map<PEER_IP, FILE_CHUNK_MAP> PEER_KNOWLEDGE_BASE; 
+typedef unordered_map<PEER_IP, FILE_CHUNK_MAP> PEER_KNOWLEDGE_BASE;
+
+typedef unordered_map<PEER_IP, PEER_IP> IP_MAPPING;
 
 typedef int FILE_SIZE;
 
@@ -32,11 +34,28 @@ struct FileInfo {
 };
 typedef unordered_map<FILE_NAME, FileInfo> FILE_DETAILS_MAP;
 
+
+
+class IP_MAP{
+    private:
+    IP_MAPPING old_to_new;
+    IP_MAPPING new_to_old;
+
+    public:
+    PEER_IP getOTNMapping(PEER_IP oldIP);
+    PEER_IP getNTOMapping(PEER_IP newIP);
+    void updatePeerIP(PEER_IP oldIP, PEER_IP newIP);
+    void createPeer(PEER_IP IP);
+    PEER_IP removePeer(PEER_IP IP);
+    bool peerExists(PEER_IP oldIP);
+};
+
 class Knowledge_Base{
     private:
     FILE_KNOWLEDGE_BASE File_List;
     PEER_KNOWLEDGE_BASE Peer_List;
     FILE_DETAILS_MAP fdm;
+    IP_MAP IpMapping;
 
     int readcount = 0;
     int writecount = 0;
@@ -52,17 +71,18 @@ class Knowledge_Base{
     void writerUnlock();
 
     public:
-    void createNewPeer(string ipAddr);
+
     void removePeer(string ipAddr);
 
     string listAllFiles();
     string getFileInfo(string fileName);
-    string downloadFile(string fileName);    
+    string downloadFile(string fileName);
     string getPeerForChunks(string fn, vector<int> chunkIDList);
-    void uploadNewFile(string ipAddr, string fileName, int fileSize);   
+    void uploadNewFile(string ipAddr, string fileName, int fileSize);
     void updatePeerFileChunkStatus(string ipAddr, string fileName, vector<int> chunkIDList);
+    void updatePeerIP(string oldIP, string newIP);
 
-    void printEverything();   
+    void printEverything();
 
     bool isEmpty();
     bool containsFile(string fileName);
