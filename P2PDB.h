@@ -38,8 +38,8 @@ typedef unordered_map<FILE_NAME, FileInfo> FILE_DETAILS_MAP;
 
 class IP_MAP{
     private:
-    IP_MAPPING ord_to_new;
-    IP_MAPPING new_to_ord;
+    IP_MAPPING old_to_new;
+    IP_MAPPING new_to_old;
 
     public:
     PEER_IP getOTNMapping(PEER_IP oldIP);
@@ -48,7 +48,7 @@ class IP_MAP{
     void createPeer(PEER_IP IP);
     PEER_IP removePeer(PEER_IP IP);
     bool peerExists(PEER_IP oldIP);
-}
+};
 
 class Knowledge_Base{
     private:
@@ -71,18 +71,18 @@ class Knowledge_Base{
     void writerUnlock();
 
     public:
-   
+
     void removePeer(string ipAddr);
 
     string listAllFiles();
     string getFileInfo(string fileName);
-    string downloadFile(string fileName);    
+    string downloadFile(string fileName);
     string getPeerForChunks(string fn, vector<int> chunkIDList);
-    void uploadNewFile(string ipAddr, string fileName, int fileSize);   
+    void uploadNewFile(string ipAddr, string fileName, int fileSize);
     void updatePeerFileChunkStatus(string ipAddr, string fileName, vector<int> chunkIDList);
     void updatePeerIP(string oldIP, string newIP);
 
-    void printEverything();   
+    void printEverything();
 
     bool isEmpty();
     bool containsFile(string fileName);

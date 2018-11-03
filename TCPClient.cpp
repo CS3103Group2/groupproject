@@ -178,7 +178,7 @@ string TCPClient::readAllFiles(int size = 512)
 
     	if(recv(sock , buffer , sizeof(buffer) , 0) < 0) {
         	cout << "receive failed!" << endl;
-	return ""; 
+	return "";
 	}
 
 	cout << endl;
@@ -192,4 +192,3 @@ void TCPClient::exit()
 {
     close(sock);
 }
-
