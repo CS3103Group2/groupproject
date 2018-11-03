@@ -24,11 +24,7 @@ void handleList(string &response){
     if (!KB.isEmpty()){
         response = KB.listAllFiles() + "\r\n";
     } else{
-<<<<<<< HEAD
-        response = "There are currently no files in the network.\n";
-=======
         response = "0 There are currently no files in the network.\r\n";
->>>>>>> List&Query
     }
 }
 
@@ -48,7 +44,11 @@ void handleDownload(string fileName, string &response){
     }
 }
 
-void handleUpload(string ipAddr, string fileName, int fileSize, string &response){
+void handleUpload(vector<string> incomingMsg, string &response)
+{
+    string ipAddr = incomingMsg[1];
+    string fileName = incomingMsg[2];
+    int fileSize = stoi(incomingMsg[3]);
     if (KB.containsFile(fileName)){
         response = "0 A file of this name already exists. Rename the file and try again.\r\n";
         return;
@@ -57,18 +57,20 @@ void handleUpload(string ipAddr, string fileName, int fileSize, string &response
     response = "1\r\n";
 }
 
-void handleExit(string clientAddr, string &response){
-    KB.removePeer(clientAddr);
+void handleExit(vector<string> incomingMsg, string &response)
+{
+    KB.removePeer(incomingMsg[1]);
     response = "1 You selfish bastard =D.\r\n";
 }
 
-void handleUpdate(string clientAddr, vector<string> incomingMsg, string &response){
+void handleUpdateChunk(vector<string> incomingMsg, string &response){
     vector<int> chunkIDList;
-    for (int i=2; i < incomingMsg.size(); i++){ 
+    string clientIP = incomingMsg[1];
+    for (int i=3; i < incomingMsg.size(); i++){ 
         chunkIDList.push_back(stoi(incomingMsg[i]));
     }
-    if (KB.containsFile(incomingMsg[1])){
-        KB.updatePeerFileChunkStatus(clientAddr, incomingMsg[1], chunkIDList);
+    if (KB.containsFile(incomingMsg[2])){
+        KB.updatePeerFileChunkStatus(clientIP, incomingMsg[2], chunkIDList);
         response = "1\r\n";
     } else{
         response = "0\r\n";
@@ -78,16 +80,6 @@ void handleUpdate(string clientAddr, vector<string> incomingMsg, string &respons
 
 void handleGetChunks(vector<string> &incomingMsg, string & response){
     vector<int> chunkIDList;
-<<<<<<< HEAD
-    for (int i=2; i < (incomingMsg.size()-1); i++){ // last item should be \r\n
-        chunkIDList.push_back(stoi(incomingMsg[i]));
-    }
-    if (KB.containsFile(incomingMsg[1])){
-        response = "1 ";
-        response += KB.getPeerForChunks(incomingMsg[1], chunkIDList);
-    } else{
-        response = "0 \n";
-=======
     for (int i=2; i < incomingMsg.size(); i++){
         chunkIDList.push_back(stoi(incomingMsg[i]));
     }
@@ -96,11 +88,16 @@ void handleGetChunks(vector<string> &incomingMsg, string & response){
         response += KB.getPeerForChunks(incomingMsg[1], chunkIDList) + "\r\n";
     } else{
         response = "0\r\n";
->>>>>>> List&Query
     }
 }
 
-void processIncomingMessage(string message, string &response, string clientAddr){
+void handleUpdateIP(vector<string> &incomingMsg, string &response){
+    KB.updatePeerIP(incomingMsg[1], incomingMsg[2]);
+    response = "1\r\n";
+}
+
+void processIncomingMessage(string message, string &response)
+{
 
     regex ws_re("\\s+");
     vector<string> result{
@@ -114,27 +111,21 @@ void processIncomingMessage(string message, string &response, string clientAddr)
     } else if (code == "3"){
         handleDownload(result[1], response);
     } else if (code == "4"){
-        handleUpload(clientAddr, result[1], stoi(result[2]), response);
-    } else if (code == "5"){
-<<<<<<< HEAD
-        handleExit(clientAddr, response);            
-=======
-        handleExit(clientAddr, response);
->>>>>>> List&Query
+        handleUpload(result, response);
+    } else if (code == "5"){         
+        handleExit(result, response);
     } else if (code == "6"){ // update peer's chunk status
-        handleUpdate(clientAddr, result, response);
+        handleUpdateChunk(result, response);
     } else if (code == "7"){
-        handleGetChunks(result,response);
+        handleGetChunks(result, response);
+    } else if (code == "8"){
+        handleUpdateIP(result, response);
     } else{
-<<<<<<< HEAD
-        response = "Action is not defined!\n";
-=======
         response = "0 Action is not defined!\r\n";
->>>>>>> List&Query
     }
 }
 
-void threadHandler(int sock, string clientAddr){
+void threadHandler(int sock){
 
     int bytesRecved;
     char buffer[MAXBUFFERSIZE];
@@ -147,7 +138,7 @@ void threadHandler(int sock, string clientAddr){
         //cout <<"Thread connecting to " << clientAddr << " has received " << buffer << endl;
         string msg(buffer);
         string response;
-        processIncomingMessage(msg, response, clientAddr);
+        processIncomingMessage(msg, response);
         send(sock, response.c_str(), response.length(), 0);
     }
 
@@ -184,7 +175,7 @@ main(int argc, char const *argv[])
     while (1){
         cnxnSock = accept(serverSock,(struct sockaddr*)&clientAddress,&sosize);
         cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
-        thread slave(threadHandler, cnxnSock, inet_ntoa(clientAddress.sin_addr));   
+        thread slave(threadHandler, cnxnSock);   
         slave.detach();
     }
 
