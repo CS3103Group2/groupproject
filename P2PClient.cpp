@@ -16,6 +16,7 @@
 #include <regex>
 #include <mutex>
 #include <signal.h>
+#include <sys/mman.h>
 
 // Uncomment in Linux for child handling
 // #include <sys/prctl.h>
@@ -26,15 +27,17 @@
 #include <sstream>
 #include <sys/stat.h>
 
+#define MAXLINE 200
 
 
 using namespace std;
 typedef unordered_map<int, string> FILE_IPADDR_MAP;
 const int DEFAULT_CHUNK_SIZE = 1024;
 
-string p2pserver_address;
+string p2pserver_address, stunserver_address, stunserver_port, current_public_ip, new_public_ip;
 FILE_IPADDR_MAP file_map, file_map_failed, file_map_successful;
-mutex mutx, mutx_for_failed, mutx_for_successful;
+mutex mutx, mutx_for_failed, mutx_for_successful, ip_mutx;
+void* shmem;
 
 /******************************************************************************
 ***************************** Utilities  **************************************
@@ -58,7 +61,8 @@ string generate_query(int op, string input)
 
     switch(op)
     {
-        case 1: //
+        case 1: // list files
+            query = "1 " + input + returnchar;
             break;
         case 2: //Query a file
 			query = "2 " + input + returnchar;
@@ -74,8 +78,13 @@ string generate_query(int op, string input)
             break;
         case 6: //Update server on available chunks
             query = "6 " + input + returnchar;
+            break;
         case 7: //Get chunk updates from server
             query = "7 " + input + returnchar;
+            break;
+        case 8: //Get chunk updates from server
+            query = "8 " + input + returnchar;
+            break;
         default:
             query = "" + returnchar;
     }
@@ -180,6 +189,38 @@ int getUpdateFromServer(string filename){
 
     return 0;
 }
+
+void updateTrackerOnPublicIP(){
+
+    TCPClient server_connection;
+    string query;
+
+    query = generate_query(8, current_public_ip, new_public_ip);
+    server_connection.send_data(query);
+    reply = server_connection.read();
+    server_connection.exit();
+
+}
+
+void updateNATOnPublicIP(){
+    TCPClient NAT_connection;
+    string query;
+
+    query = current_public_ip + " " + new_public_ip;
+    NAT_connection.send_data(query);
+    reply = NAT_connection.read();
+    NAT_connection.exit();
+}
+
+
+void updatePublicIP(){
+    updateTrackerOnPublicIP();
+    updateNATOnPublicIP();
+    current_public_ip = new_public_ip;
+    memcpy(shmem, (char *) current_public_ip.c_str(), sizeof((char *) current_public_ip.c_str()));
+}
+
+
 
 void updateServerOnAvailableChunks(string filename){
 
@@ -457,6 +498,21 @@ void handleDownloadRequestFromPeer(int sock, string clientAddr){
 	return;
 }
 
+
+void* create_shared_memory(size_t size) {
+  // Our memory buffer will be readable and writable:
+  int protection = PROT_READ | PROT_WRITE;
+
+  // The buffer will be shared (meaning other processes can access it), but
+  // anonymous (meaning third-party processes cannot obtain an address for it),
+  // so only this process and its children will be able to use it:
+  int visibility = MAP_ANONYMOUS | MAP_SHARED;
+
+  // The remaining parameters to `mmap()` are not important for this use case,
+  // but the manpage for `mmap` explains their purpose.
+  return mmap(NULL, size, protection, visibility, 0, 0);
+}
+
 /*****************************************************************************
 ***************************** COMMANDS  **************************************
 ******************************************************************************/
@@ -468,10 +524,11 @@ int listFiles()
     TCPClient server_connection;
 
     if(connectToServer(server_connection) == -1){
-        exit(1);
+        cout << "Error connecting to server";
+        return -1;
     }
 
-    query = "1 \n";
+    query = generate_query(1, "");
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
@@ -675,18 +732,144 @@ int quit(){
 
 }
 
+int stun_xor_addr(char * stun_server_ip,short stun_server_port, char * return_ip_port)
+{
+    struct sockaddr_in servaddr;
+    struct sockaddr_in localaddr;
+    unsigned char buf[MAXLINE];
+    int sockfd, i;
+    unsigned char bindingReq[20];
 
+    int stun_method,msg_length;
+    short attr_type;
+    short attr_length;
+    short port;
+    int n;
+
+    cout << string (stun_server_ip);
+
+    //# create socket
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0); // UDP
+
+    // server
+    memset(&servaddr, 0, sizeof(servaddr)); //sets all bytes of servaddr to 0
+    servaddr.sin_family = AF_INET;
+    inet_pton(AF_INET, stun_server_ip, &servaddr.sin_addr);
+    servaddr.sin_port = htons(stun_server_port);
+
+    // local
+    memset(&localaddr, 0, sizeof(localaddr)); //sets all bytes of localaddr to 0
+    localaddr.sin_family = AF_INET;
+    //inet_pton(AF_INET, "192.168.0.181", &localaddr.sin_addr);
+    localaddr.sin_port = htons(PORT);
+
+    n = ::bind(sockfd,(struct sockaddr *)&localaddr,sizeof(localaddr));
+    //printf("bind result=%d\n",n);
+
+    printf("socket opened to  %s:%d  at local port %d\n",stun_server_ip,stun_server_port,PORT);
+
+    //## first bind
+    * (short *)(&bindingReq[0]) = htons(0x0001);    // stun_method
+    * (short *)(&bindingReq[2]) = htons(0x0000);    // msg_length
+    * (int *)(&bindingReq[4])   = htonl(0x2112A442);// magic cookie
+
+    *(int *)(&bindingReq[8]) = htonl(0x63c7117e);   // transacation ID
+    *(int *)(&bindingReq[12])= htonl(0x0714278f);
+    *(int *)(&bindingReq[16])= htonl(0x5ded3221);
+
+
+
+    cout << "Send data ...\n";
+    n = sendto(sockfd, bindingReq, sizeof(bindingReq),0,(struct sockaddr *)&servaddr, sizeof(servaddr)); // send UDP
+    if (n == -1)
+    {
+        cout << "Unable to send data to STUN server\n";
+        return -1;
+    }
+
+    // time wait
+    sleep(1);
+
+    printf("Read recv ...\n");
+    n = recvfrom(sockfd, buf, MAXLINE, 0, NULL,0); // recv UDP
+    if (n == -1)
+    {
+        cout << "Unable to receive data to STUN server\n";
+        return -2;
+    }
+    //printf("Response from server:\n");
+    //write(STDOUT_FILENO, buf, n);
+
+    if (*(short *)(&buf[0]) == htons(0x0101))
+    {
+        cout << "STUN binding success!\n";
+
+        // parse XOR
+        n = htons(*(short *)(&buf[2]));
+        i = 20;
+        while(i<sizeof(buf))
+        {
+            attr_type = htons(*(short *)(&buf[i]));
+            attr_length = htons(*(short *)(&buf[i+2]));
+            if (attr_type == 0x0020)
+            {
+                // parse : port, IP
+
+                port = ntohs(*(short *)(&buf[i+6]));
+                port ^= 0x2112;
+
+                sprintf(return_ip_port,"%d.%d.%d.%d:%d",buf[i+8]^0x21,buf[i+9]^0x12,buf[i+10]^0xA4,buf[i+11]^0x42,port);
+                break;
+            }
+            i += (4  + attr_length);
+        }
+    }
+
+    int reuse = 1;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0){
+        perror("setsockopt(SO_REUSEADDR) failed");
+    }
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, (const char*)&reuse, sizeof(reuse)) < 0){
+        perror("setsockopt(SO_REUSEPORT) failed");
+    }
+
+    close(sockfd);
+    printf("socket closed !\n");
+
+    return 0;
+}
 
 int main()
 {
     pid_t pid;
     int op, mySock, cnxnSock;
     string str;
+    char return_ip_port[50];
     struct sockaddr_in myAddress;
     struct sockaddr_in clientAddress;
+    int count = 0;
 
     cout << "Enter IP address of P2P server: ";
     getline(cin, p2pserver_address);
+
+    cout << "Enter IP address of STUN server: ";
+    getline(cin, stunserver_address);
+
+    cout << "Enter port of STUN server: ";
+    getline(cin, stunserver_port);
+
+    // Create shared memory between processes
+    shmem = create_shared_memory(128);
+
+    // Get public ip address
+    stun_xor_addr((char *)stunserver_address.c_str(),(short) stoi(stunserver_port), return_ip_port);
+    current_public_ip = string (return_ip_port);
+    new_public_ip = string (return_ip_port);
+    updatePublicIP();
+
+    memset(return_ip_port, 0, sizeof(return_ip_port));
+
+    cout << return_ip_port;
 
     pid = fork();
 
@@ -700,16 +883,46 @@ int main()
     	myAddress.sin_addr.s_addr = htonl(INADDR_ANY);
     	myAddress.sin_port = htons(PORT);
     	bind(mySock,(struct sockaddr *)&myAddress, sizeof(myAddress));
-
         listen(mySock,1);
-
         socklen_t sosize  = sizeof(clientAddress);
 
         while (1){
+            if(count == 100){
+                //wait for threads to complete
+                sleep(2);
+
+                int reuse = 1;
+                if (setsockopt(mySock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0){
+                    perror("setsockopt(SO_REUSEADDR) failed");
+                }
+                if (setsockopt(mySock, SOL_SOCKET, SO_REUSEPORT, (const char*)&reuse, sizeof(reuse)) < 0){
+                    perror("setsockopt(SO_REUSEPORT) failed");
+                }
+
+                close(mySock);
+                stun_xor_addr((char *)stunserver_address.c_str(),(short) stoi(stunserver_port), return_ip_port);
+                new_public_ip = string (return_ip_port);
+                updatePublicIP();
+
+                memset(return_ip_port, 0, sizeof(return_ip_port));
+
+                mySock = socket(AF_INET, SOCK_STREAM, 0);
+                memset(&myAddress,0,sizeof(myAddress));
+                myAddress.sin_family = AF_INET;
+                myAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+                myAddress.sin_port = htons(PORT);
+                bind(mySock,(struct sockaddr *)&myAddress, sizeof(myAddress));
+                listen(mySock,1);
+                socklen_t sosize  = sizeof(clientAddress);
+
+                count = 0;
+            }
+
             cnxnSock = accept(mySock, (struct sockaddr*)&clientAddress, &sosize);
             cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
             thread slave(handleDownloadRequestFromPeer, cnxnSock, inet_ntoa(clientAddress.sin_addr));
             slave.detach();
+            count++;
         }
 
         close(mySock);
