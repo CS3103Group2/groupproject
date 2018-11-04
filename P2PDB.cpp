@@ -33,7 +33,7 @@ void Knowledge_Base::writerLock(){
 }
 void Knowledge_Base::writerUnlock(){
     resource.unlock();                //release file
-    
+
     wmutex.lock();                  //reserve exit section
     writecount--;                //indicate you're leaving
     if (writecount == 0) {        //checks if you're the last writer
