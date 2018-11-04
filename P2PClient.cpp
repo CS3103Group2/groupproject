@@ -34,10 +34,13 @@ using namespace std;
 typedef unordered_map<int, string> FILE_IPADDR_MAP;
 const int DEFAULT_CHUNK_SIZE = 1024;
 
-string p2pserver_address, stunserver_address, stunserver_port, current_public_ip, new_public_ip;
+string p2pserver_address, stunserver_address, stunserver_port, current_public_ip, new_public_ip, NAT_ip_addr;
 FILE_IPADDR_MAP file_map, file_map_failed, file_map_successful;
 mutex mutx, mutx_for_failed, mutx_for_successful, ip_mutx;
 void* shmem;
+
+
+string translateIPAddressesWithNAT(string reply);
 
 /******************************************************************************
 ***************************** Utilities  **************************************
@@ -143,10 +146,16 @@ int connectToClient(TCPClient &tcp_client, string ip_addr)
 }
 
 
+
+/*****************************************************************************
+*********************** PEER CONNECTION ERROR UTILITIES **********************
+******************************************************************************/
+
+
 int getUpdateFromServer(string filename){
 
     int chunkid;
-    string query, reply, temp;
+    string query, reply, temp, nat_request;
     TCPClient server_connection;
 
     if(connectToServer(server_connection) == -1){
@@ -159,7 +168,7 @@ int getUpdateFromServer(string filename){
 
     for (pair<int, string> element : file_map_failed)
     {
-    	temp += " " + to_string(element.first) + " " + element.second;
+    	temp += " " + to_string(element.first);
         mutx_for_failed.lock();
         file_map_failed.erase(element.first);
         mutx_for_failed.unlock();
@@ -177,47 +186,27 @@ int getUpdateFromServer(string filename){
     };
 
     if(result[0] == "0"){
-        cout << "File is unavailable for download. Server" << endl;
+        cout << "File is unavailable for download. No available peers." << endl;
         exit(1);
     }
 
-    for (int i = 1; i < (result.size() - 1); i += 2){
+    for (int i = 1; i < result.size(); i += 2){
+        nat_request +=  " " + result[i] + " " + result[i + 1];
+    }
+
+    reply = translateIPAddressesWithNAT(nat_request);
+
+    vector<string> finalresult{
+        sregex_token_iterator(reply.begin(), reply.end(), ws_re, -1), {}
+    };
+
+    for (int i = 1; i < finalresult.size(); i += 2){
         mutx.lock();
-        file_map.insert((pair<int,string>) make_pair(stoi(result[i]), result[i + 1]));
+        file_map.insert((pair<int,string>) make_pair(stoi(finalresult[i]), finalresult[i + 1]));
         mutx.unlock();
     }
 
     return 0;
-}
-
-void updateTrackerOnPublicIP(){
-
-    TCPClient server_connection;
-    string query;
-
-    query = generate_query(8, current_public_ip, new_public_ip);
-    server_connection.send_data(query);
-    reply = server_connection.read();
-    server_connection.exit();
-
-}
-
-void updateNATOnPublicIP(){
-    TCPClient NAT_connection;
-    string query;
-
-    query = current_public_ip + " " + new_public_ip;
-    NAT_connection.send_data(query);
-    reply = NAT_connection.read();
-    NAT_connection.exit();
-}
-
-
-void updatePublicIP(){
-    updateTrackerOnPublicIP();
-    updateNATOnPublicIP();
-    current_public_ip = new_public_ip;
-    memcpy(shmem, (char *) current_public_ip.c_str(), sizeof((char *) current_public_ip.c_str()));
 }
 
 
@@ -237,17 +226,92 @@ void updateServerOnAvailableChunks(string filename){
 
     for (pair<int, string> element : file_map_successful)
     {
-    	temp += " " + to_string(element.first) + " " + element.second;
+    	temp += " " + to_string(element.first);
         mutx_for_successful.lock();
         file_map_successful.erase(element.first);
         mutx_for_successful.unlock();
     }
 
-    query = generate_query(6, filename + temp);
+    query = generate_query(6, filename + " " + current_public_ip + temp);
     server_connection.send_data(query);
     server_connection.exit();
 
 }
+
+
+/*****************************************************************************
+*********************** STUN UTILITIES ***************************************
+******************************************************************************/
+
+void updateTrackerOnPublicIP(){
+
+    TCPClient server_connection;
+    string query, reply;
+
+    if(connectToServer(server_connection) == -1){
+        exit(1);
+    }
+
+    query = generate_query(8, current_public_ip + " " + new_public_ip);
+    server_connection.send_data(query);
+    reply = server_connection.read();
+    server_connection.exit();
+
+}
+
+void updateNATOnPublicIP(){
+    TCPClient NAT_connection;
+    string query, reply;
+
+    if(connectToClient(NAT_connection, NAT_ip_addr) == -1){
+        exit(1);
+    }
+
+    query = "1 " + current_public_ip + " " + new_public_ip;
+    NAT_connection.send_data(query);
+    reply = NAT_connection.read();
+    NAT_connection.exit();
+}
+
+
+void updatePublicIP(){
+    updateTrackerOnPublicIP();
+    // updateNATOnPublicIP();
+    cout << "before: " + current_public_ip + " " + new_public_ip << endl;
+    current_public_ip = new_public_ip;
+    cout << "after " + current_public_ip + " " + new_public_ip << endl;
+
+    cout << (char *) current_public_ip.c_str() << endl;
+    cout << strlen((char *) current_public_ip.c_str()) << endl;
+
+    memcpy(shmem, (char *) current_public_ip.c_str(), strlen((char *) current_public_ip.c_str()) + 1);
+
+    cout << string ((char *) shmem) << endl;
+}
+
+
+
+string translateIPAddressesWithNAT(string reply){
+
+    TCPClient NAT_connection;
+    string query, nat_reply;
+
+    if(connectToServer(NAT_connection) == -1){
+        exit(1);
+    }
+
+    query = "2 " + reply;
+    NAT_connection.send_data(query);
+    nat_reply = NAT_connection.read();
+    NAT_connection.exit();
+
+    return nat_reply;
+
+}
+
+/*****************************************************************************
+*********************** DOWNLOAD UTILITIES (FROM PEER) ***********************
+******************************************************************************/
 
 
 
@@ -403,6 +467,13 @@ int downloadFromPeers(string filename, int num_of_chunks){
 }
 
 
+
+
+/*****************************************************************************
+*********************** PEER DOWNLOAD REQUESTS  ******************************
+******************************************************************************/
+
+
 bool senddata(int sock, void *buf, int buflen)
 {
     unsigned char *pbuf = (unsigned char *) buf;
@@ -530,7 +601,7 @@ int listFiles()
 
     query = generate_query(1, "");
     server_connection.send_data(query);
-    reply = server_connection.read();
+    reply = server_connection.readAllFiles(512);
     server_connection.exit();
 
     cout << reply << endl;
@@ -564,12 +635,14 @@ int searchFile()
     } else {
     	cout << reply << endl;
 	}
+
+    return 1;
 }
 
 int downloadFile()
 {
     int i, j, k, l, server_sock, num_of_chunks, filesize, chunkid, count;
-    string filename, query, reply, chunkdetails, ipaddr;
+    string filename, query, reply, chunkdetails, ipaddr, nat_request;
     TCPClient server_connection;
 
     cout << "\nEnter file to download: ";
@@ -588,6 +661,7 @@ int downloadFile()
         cout << "\nFile is not available. Please choose another file to download." << endl;
         return -1;
     } else {
+
         regex ws_re("\\s+");
         vector<string> result{
             sregex_token_iterator(reply.begin(), reply.end(), ws_re, -1), {}
@@ -602,13 +676,24 @@ int downloadFile()
         file_map_successful.clear();
 
         for(i = 0; i < (num_of_chunks*2); i+=2){
-            chunkid = stoi(result[i + 4]);
-            ipaddr = result[i + 5];
-            file_map.insert((pair<int,string>) make_pair(chunkid, ipaddr));
+            nat_request += " " + result[i + 4] + " " + result[i + 5];
         }
+
+        reply = translateIPAddressesWithNAT(nat_request);
+
+        vector<string> finalresult{
+            sregex_token_iterator(reply.begin(), reply.end(), ws_re, -1), {}
+        };
+
+        for (int i = 1; i < finalresult.size(); i += 2){
+            file_map.insert((pair<int,string>) make_pair(stoi(finalresult[i]), finalresult[i + 1]));
+        }
+
     }
 
     downloadFromPeers(filename, num_of_chunks);
+
+    return 1;
 }
 
 
@@ -668,7 +753,7 @@ int uploadFile(){
         exit(1);
     }
 
-    query = generate_query(4, filename + " " + to_string(fileSize) + " " + to_string(num_of_chunks) + "\n");
+    query = generate_query(4, current_public_ip + " " + filename + " " + to_string(fileSize) + " " + to_string(num_of_chunks) + "\n");
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
@@ -859,7 +944,7 @@ int main()
     getline(cin, stunserver_port);
 
     // Create shared memory between processes
-    shmem = create_shared_memory(128);
+    shmem = create_shared_memory(1024);
 
     // Get public ip address
     stun_xor_addr((char *)stunserver_address.c_str(),(short) stoi(stunserver_port), return_ip_port);
@@ -869,7 +954,7 @@ int main()
 
     memset(return_ip_port, 0, sizeof(return_ip_port));
 
-    cout << return_ip_port;
+    cout << return_ip_port << endl;
 
     pid = fork();
 
@@ -887,9 +972,9 @@ int main()
         socklen_t sosize  = sizeof(clientAddress);
 
         while (1){
-            if(count == 100){
+            // if(count == 100){
                 //wait for threads to complete
-                sleep(2);
+                sleep(5);
 
                 int reuse = 1;
                 if (setsockopt(mySock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0){
@@ -916,13 +1001,13 @@ int main()
                 socklen_t sosize  = sizeof(clientAddress);
 
                 count = 0;
-            }
-
-            cnxnSock = accept(mySock, (struct sockaddr*)&clientAddress, &sosize);
-            cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
-            thread slave(handleDownloadRequestFromPeer, cnxnSock, inet_ntoa(clientAddress.sin_addr));
-            slave.detach();
-            count++;
+            // }
+            //
+            // cnxnSock = accept(mySock, (struct sockaddr*)&clientAddress, &sosize);
+            // cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
+            // thread slave(handleDownloadRequestFromPeer, cnxnSock, inet_ntoa(clientAddress.sin_addr));
+            // slave.detach();
+            // count++;
         }
 
         close(mySock);
@@ -950,7 +1035,7 @@ int main()
             }
 
         } while (op != 5);
-      }
+       }
 
     quit();
 
