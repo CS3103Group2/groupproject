@@ -601,7 +601,7 @@ int listFiles()
 
     query = generate_query(1, "");
     server_connection.send_data(query);
-    reply = server_connection.read();
+    reply = server_connection.readAllFiles(512);
     server_connection.exit();
 
     cout << reply << endl;
@@ -972,7 +972,7 @@ int main()
         socklen_t sosize  = sizeof(clientAddress);
 
         while (1){
-            if(count == 100){
+            // if(count == 100){
                 //wait for threads to complete
                 sleep(5);
 
@@ -1001,13 +1001,13 @@ int main()
                 socklen_t sosize  = sizeof(clientAddress);
 
                 count = 0;
-            }
-
-            cnxnSock = accept(mySock, (struct sockaddr*)&clientAddress, &sosize);
-            cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
-            thread slave(handleDownloadRequestFromPeer, cnxnSock, inet_ntoa(clientAddress.sin_addr));
-            slave.detach();
-            count++;
+            // }
+            //
+            // cnxnSock = accept(mySock, (struct sockaddr*)&clientAddress, &sosize);
+            // cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
+            // thread slave(handleDownloadRequestFromPeer, cnxnSock, inet_ntoa(clientAddress.sin_addr));
+            // slave.detach();
+            // count++;
         }
 
         close(mySock);
