@@ -17,6 +17,7 @@
 #include <mutex>
 #include <signal.h>
 #include <sys/mman.h>
+#include <errno.h>
 
 // Uncomment in Linux for child handling
 // #include <sys/prctl.h>
@@ -713,7 +714,7 @@ int uploadFile(){
     // get filename
     // get file size
     // spilt into chunks (num of chunks) store into array
-    // inform the tracker in this format - 4. filename size chunkNum
+    // inform the tracker in this format - 4 ipaddress filename size chunksNum
 
     string filename, folder, query, reply;
     int fileSize, num_of_chunks;
@@ -731,28 +732,38 @@ int uploadFile(){
         return -1;
     }
 
-    fileSize = getFileSize(&inputStream); //get size of the file
-
-    //cout << "Size " << fileSize << endl;
+    //get size of the file
+    fileSize = getFileSize(&inputStream); 
 
     num_of_chunks = ceil(fileSize / DEFAULT_CHUNK_SIZE);
 
     string filepath =  filename + "_chunks";
 
     // create a directory based on the filename for file chunks
-    const int dir_err = mkdir(filepath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    const int dir_status = mkdir(filepath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
-    cout << "Value " << dir_err << endl;
-
-    if(dir_err != -1){
+    //Folder validation
+    /*if(dir_status != -1){
         cout << "Folder created!" << endl;
-    }
+    }*/
 
+    errno  = 0;
+
+    if(dir_status == -1){ //error in creating folder
+        if(errno == EEXIST){ //ignore as folder is already created
+            
+        } else {
+            cout << "Unable to create folder | error:" << strerror(errno) << endl;
+            return -1;
+        }
+    }
+    
     // ================== QUERY ========================
     if(connectToServer(server_connection) == -1){
         exit(1);
     }
 
+    //command: 4 ip_address filename filesize num_of_chunks
     query = generate_query(4, current_public_ip + " " + filename + " " + to_string(fileSize) + " " + to_string(num_of_chunks) + "\n");
     server_connection.send_data(query);
     reply = server_connection.read();
@@ -808,14 +819,39 @@ int uploadFile(){
 
         cout << "Chunking complete! " << counter - 1 << " files created." << endl;
     } else {
-            cout << "Error opening file!" << endl;
+        cout << "Error opening file!" << endl;
     }
     return 0;
 }
 
 int quit(){
 
+    TCPClient server_connection;
+    string query, reply;
+
+    // ================== QUERY ========================
+    if(connectToServer(server_connection) == -1){
+        exit(1);
+    }
+
+    //command: 5 ip_address 
+    query = generate_query(5, current_public_ip + "\n");
+    server_connection.send_data(query);
+    reply = server_connection.read();
+    server_connection.exit();
+    // ================== QUERY ========================
+
+    cout <<  " Exit Sucessfully. Bye." << endl;
+    exit(0);
 }
+
+void exitHandler(int signum){
+    if(signum == SIGINT){
+        cout <<  " Program closed abruptedly." << endl;
+        quit();
+    }
+}
+
 
 int stun_xor_addr(char * stun_server_ip,short stun_server_port, char * return_ip_port)
 {
@@ -946,6 +982,7 @@ int main()
     // Create shared memory between processes
     shmem = create_shared_memory(1024);
 
+    
     // Get public ip address
     stun_xor_addr((char *)stunserver_address.c_str(),(short) stoi(stunserver_port), return_ip_port);
     current_public_ip = string (return_ip_port);
@@ -955,6 +992,11 @@ int main()
     memset(return_ip_port, 0, sizeof(return_ip_port));
 
     cout << return_ip_port << endl;
+
+    //terminating with ctrl-c
+    if (signal(SIGINT, exitHandler) == SIG_ERR){
+        cout <<  "Failed to register handler" << endl;
+    }
 
     pid = fork();
 
@@ -1035,7 +1077,7 @@ int main()
             }
 
         } while (op != 5);
-       }
+    }
 
     quit();
 
