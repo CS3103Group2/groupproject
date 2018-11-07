@@ -673,6 +673,30 @@ int uploadFile(){
 
 int quit(){
 
+    TCPClient server_connection;
+    string query, reply;
+
+    // ================== QUERY ========================
+    if(connectToServer(server_connection) == -1){
+        exit(1);
+    }
+
+    //command: 5 ip_address
+    query = generate_query(5, current_public_ip + "\n");
+    server_connection.send_data(query);
+    reply = server_connection.read();
+    server_connection.exit();
+    // ================== QUERY ========================
+
+    cout <<  " Exit Sucessfully. Bye." << endl;
+    exit(0);
+}
+
+void exitHandler(int signum){
+    if(signum == SIGINT){
+        cout <<  " Program closed abruptedly." << endl;
+        quit();
+    }
 }
 
 
@@ -687,6 +711,11 @@ int main()
 
     cout << "Enter IP address of P2P server: ";
     getline(cin, p2pserver_address);
+
+    //terminating with ctrl-c
+    if (signal(SIGINT, exitHandler) == SIG_ERR){
+        cout <<  "Failed to register handler" << endl;
+    }
 
     pid = fork();
 
