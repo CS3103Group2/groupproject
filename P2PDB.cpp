@@ -97,7 +97,7 @@ string Knowledge_Base::listAllFiles(){
 
     readerLock();
 
-    returnString += "     File Name         File Size          Initial Seeder\n";
+    returnString += "No   File Name         File Size          Initial Seeder\n";
     int i = 1;
     for(auto &itr: fdm){
         returnString += to_string(i) + ".   ";
@@ -107,6 +107,10 @@ string Knowledge_Base::listAllFiles(){
         returnString += fi.initialSeeder + "\n";
         i++;
     }
+
+    returnString += "\nTotal number of files found: ";
+    returnString += to_string(i - 1);
+    returnString += '\n';
 
     readerUnlock();
 
@@ -138,7 +142,17 @@ string Knowledge_Base::downloadFile(string fileName){
 }
 
 string Knowledge_Base::getFileInfo(FILE_NAME fileName){
-    return "";
+    string returnStr;
+
+    readerLock();
+
+    returnStr += " " + fileName; // file name
+    returnStr += " " + to_string(fdm[fileName].fileSize); // file size
+    returnStr += " " + to_string(File_List[fileName].size()); // num of chunk
+
+    readerUnlock();
+
+    return returnStr;
 }
 
 string Knowledge_Base::getPeerForChunks(string fn, vector<int> chunkIDList){

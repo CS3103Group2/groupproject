@@ -34,5 +34,6 @@ public:
   int receiveAndWriteToFile(string filepath);
   string readn();
   string read();
+  string readAllFiles(int);
   void exit();
 };
