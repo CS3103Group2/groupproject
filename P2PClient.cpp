@@ -301,11 +301,18 @@ void downloadChunkFromPeer(string filename){
         file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
         mutx_for_failed.unlock();
         return;
-    } else if (peerClient.receiveAndWriteToFile(filepath + "/" + to_string(chunkid)) < 0){
+    } else {
+
         cout << "RESPONSE: 1" << endl;
-        mutx_for_failed.lock();
-        file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
-        mutx_for_failed.unlock();
+        reply = peerClient.read();
+        cout << "FILE SIZE: " + reply << endl;
+        int filesize = stoi(reply);
+
+        if (peerClient.receiveAndWriteToFile(filepath + "/" + to_string(chunkid), filesize) < 0) {
+            mutx_for_failed.lock();
+            file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
+            mutx_for_failed.unlock();
+        }
         return;
     }
     peerClient.exit();
@@ -387,10 +394,10 @@ bool sendfile(int sock, FILE *f)
 {
 
     fseek(f, 0, SEEK_END);
-            long filesize = ftell(f);
-             rewind(f);
-             if (filesize == EOF)
-                 return false;
+    long filesize = ftell(f);
+    rewind(f);
+    if (filesize == EOF)
+        return false;
     if (filesize > 0)
     {
         char buffer[DEFAULT_CHUNK_SIZE];
@@ -405,12 +412,17 @@ bool sendfile(int sock, FILE *f)
             filesize -= num;
         }
         while (filesize > 0);
-	string terminatechar = "\0\0\r\n";
-	send(sock, terminatechar.c_str(), terminatechar.length(), 0);
     }
     return true;
 }
 
+
+unsigned int fsizeof_full(FILE *fp) {
+    unsigned int size;
+    while(getc(fp) != EOF)
+        ++size;
+    return size;
+}
 
 
 void handleDownloadRequestFromPeer(int sock, string clientAddr){
@@ -438,6 +450,12 @@ void handleDownloadRequestFromPeer(int sock, string clientAddr){
             cout << "RESPONSE: 1" << endl;
             response = "1\n";
             send(sock, response.c_str(), response.length(), 0);
+
+
+            response = to_string(fsizeof_full(filehandle)) + "\n";
+            cout << "SEND FILESIZE: " << response << endl;
+            send(sock, response.c_str(), response.length(), 0);
+
             sendfile(sock, filehandle);
             cout << "FILESENT" << endl;
 		    sleep(2);
@@ -473,7 +491,7 @@ int listFiles()
 
     query = "1 \n";
     server_connection.send_data(query);
-    reply = server_connection.read();
+    reply = server_connection.readAllFiles(1024);
     server_connection.exit();
 
     cout << reply << endl;
