@@ -682,7 +682,7 @@ int quit(){
     }
 
     //command: 5 ip_address
-    query = generate_query(5, current_public_ip + "\n");
+    query = generate_query(5, "");
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
