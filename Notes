@@ -1,0 +1,16 @@
+while{
+	
+
+	sock_num = accept(sourceIP, sourcPort)
+	recv(sock_num)
+	if (recved == 1){
+		send(sock_num, sourceIP, sourcePort)
+		thread(keep alive sock_num)
+	} else( recved == 2){
+		check mapping
+		send()
+		if (okay){
+			threadHandle(soureceIP, destinationIP)
+		}
+	}
+}
