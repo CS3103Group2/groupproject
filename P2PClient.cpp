@@ -27,7 +27,7 @@
 #include <sys/stat.h>
 
 #define PORT 15000
-#definr TUNRPORT 15001
+#define TURNPORT 15001
 
 using namespace std;
 typedef unordered_map<int, string> FILE_IPADDR_MAP;
@@ -150,7 +150,7 @@ int connectToClient(string peer_ip_addr)
     reply = turn_connection.read();
     for(i = 0; i < 2; i++){
         if(reply == "1"){
-            cout << "Access granted by TURN to " << ip_addr << endl;
+            cout << "Access granted by TURN to connect to " << peer_ip_addr << endl;
             turn_connection.exit();
             return sock;
         } else {
@@ -470,7 +470,7 @@ void handleDownloadRequestFromPeer(int sock){
             break;
         }
         buffer[bytesRecved] = '\0';
-        cout << "Incoming client connecting to me" << end;
+        cout << "Incoming client connecting to me" << endl;
         cout << "Received :" << buffer << endl;
         string message(buffer);
         string response;
@@ -797,7 +797,7 @@ int main()
             }
         }
 
-        close(mySock);
+        close(cnxnSock);
         return 0;
 
     } else {
