@@ -60,11 +60,11 @@ void handleExit(string clientAddr, string &response){
 
 void handleUpdate(string clientAddr, vector<string> incomingMsg, string &response){
     vector<int> chunkIDList;
-    for (int i=2; i < incomingMsg.size(); i++){
+    for (int i=3; i < incomingMsg.size(); i++){
         chunkIDList.push_back(stoi(incomingMsg[i]));
     }
-    if (KB.containsFile(incomingMsg[1])){
-        KB.updatePeerFileChunkStatus(clientAddr, incomingMsg[1], chunkIDList);
+    if (KB.containsFile(incomingMsg[2])){
+        KB.updatePeerFileChunkStatus(clientAddr, incomingMsg[2], chunkIDList);
         response = "1\r\n";
     } else{
         response = "0\r\n";
@@ -85,33 +85,42 @@ void handleGetChunks(vector<string> &incomingMsg, string & response){
     }
 }
 
-void processIncomingMessage(string message, string &response, string clientAddr){
+void processIncomingMessage(string message, string &response){
 
     regex ws_re("\\s+");
     vector<string> result{
         sregex_token_iterator(message.begin(), message.end(), ws_re, -1), {}
     };
-    string code = result[0];
-    if (code == "1"){
-        handleList(response);
-    } else if (code == "2"){
-        handleSearch(result[1], response);
-    } else if (code == "3"){
-        handleDownload(result[1], response);
-    } else if (code == "4"){
-        handleUpload(clientAddr, result[1], stoi(result[2]), response);
-    } else if (code == "5"){
-        handleExit(clientAddr, response);
-    } else if (code == "6"){ // update peer's chunk status
-        handleUpdate(clientAddr, result, response);
-    } else if (code == "7"){
-        handleGetChunks(result,response);
-    } else{
-        response = "0 Action is not defined!\r\n";
+
+    int code = stoi(result[0]);
+    switch (code){
+        case 1:
+            handleList(response);
+            break;
+        case 2:
+            handleSearch(result[1], response);
+            break;
+        case 3:
+            handleDownload(result[1], response);
+            break;
+        case 4:
+            handleUpload(result[1], result[2], stoi(result[3]), response);
+            break;
+        case 5:
+            handleExit(result[1], response);
+            break;
+        case 6:
+            handleUpdate(result[1], result, response);
+            break;
+        case 7:
+            handleGetChunks(result, response);
+            break;
+        default:
+            response = "0 Action is not defined!\r\n";
     }
 }
 
-void threadHandler(int sock, string clientAddr){
+void threadHandler(int sock){
 
     int bytesRecved;
     char buffer[MAXBUFFERSIZE];
@@ -124,7 +133,7 @@ void threadHandler(int sock, string clientAddr){
         //cout <<"Thread connecting to " << clientAddr << " has received " << buffer << endl;
         string msg(buffer);
         string response;
-        processIncomingMessage(msg, response, clientAddr);
+        processIncomingMessage(msg, response);
         send(sock, response.c_str(), response.length(), 0);
     }
 
@@ -161,7 +170,7 @@ int main(int argc, char const *argv[])
     while (1){
         cnxnSock = accept(serverSock,(struct sockaddr*)&clientAddress,&sosize);
         cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
-        thread slave(threadHandler, cnxnSock, inet_ntoa(clientAddress.sin_addr));   
+        thread slave(threadHandler, cnxnSock);   
         slave.detach();
     }
 
