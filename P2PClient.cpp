@@ -74,8 +74,10 @@ string generate_query(int op, string input)
             break;
         case 6: //Update server on available chunks
             query = "6 " + input + returnchar;
+            break;
         case 7: //Get chunk updates from server
             query = "7 " + input + returnchar;
+            break;
         default:
             query = "" + returnchar;
     }
@@ -148,16 +150,19 @@ int getUpdateFromServer(string filename){
         return 1;
     }
 
-    for (pair<int, string> element : file_map_failed)
+    std::vector<int> needs_removing;
+    for(auto&& element : file_map_failed)
     {
-    	temp += " " + to_string(element.first) + " " + element.second;
-        mutx_for_failed.lock();
-        file_map_failed.erase(element.first);
-        mutx_for_failed.unlock();
+        temp += " " + to_string(element.first);
+        needs_removing.push_back(element.first);
+    }
+
+    for(auto&& key : needs_removing){
+        file_map_successful.erase(key);
     }
 
     query = generate_query(7, filename + temp);
-    cout << query;
+    // cout << "GETTING UPDATE FROM TRACKER: " + query << endl;
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
@@ -168,7 +173,7 @@ int getUpdateFromServer(string filename){
     };
 
     if(result[0] == "0"){
-        cout << "File is unavailable for download. Server" << endl;
+        cout << "File is unavailable for download - Server" << endl;
         exit(1);
     }
 
@@ -187,6 +192,8 @@ void updateServerOnAvailableChunks(string filename){
     string query, temp;
     TCPClient server_connection;
 
+    int counter = 0;
+
     while((sock = server_connection.connectTo(p2pserver_address, PORT)) == -1){
         count++;
         if(count >= 5){
@@ -194,12 +201,15 @@ void updateServerOnAvailableChunks(string filename){
         }
     }
 
-    for (pair<int, string> element : file_map_successful)
+    std::vector<int> needs_removing;
+    for(auto&& element : file_map_successful)
     {
-    	temp += " " + to_string(element.first) + " " + element.second;
-        mutx_for_successful.lock();
-        file_map_successful.erase(element.first);
-        mutx_for_successful.unlock();
+        temp += " " + to_string(element.first);
+        needs_removing.push_back(element.first);
+    }
+
+    for(auto&& key : needs_removing){
+        file_map_successful.erase(key);
     }
 
     query = generate_query(6, filename + temp);
@@ -295,14 +305,14 @@ void downloadChunkFromPeer(string filename){
     peerClient.send_data(filename + " " + to_string(chunkid));
     reply = peerClient.read();
 
+    cout << "Reply: " << reply << endl;
+
     if(reply[0] == '0') {
-        cout << "RESPONSE: 0" << endl;
         mutx_for_failed.lock();
         file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
         mutx_for_failed.unlock();
         return;
     } else if (peerClient.receiveAndWriteToFile(filepath + "/" + to_string(chunkid)) < 0){
-        cout << "RESPONSE: 1" << endl;
         mutx_for_failed.lock();
         file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
         mutx_for_failed.unlock();
@@ -310,10 +320,11 @@ void downloadChunkFromPeer(string filename){
     }
     peerClient.exit();
 
-    cout << "EXITED" << endl;
     mutx_for_successful.lock();
     file_map_successful.insert((pair<int,string>) make_pair(chunkid, ipaddr));
     mutx_for_successful.unlock();
+
+    cout << "EXITED" << endl;
 
     return;
 
@@ -329,6 +340,7 @@ int downloadFromPeers(string filename, int num_of_chunks){
     if(dir_err != -1){
         cout << "Folder created!" << endl;
     }
+
 
     while(!file_map.empty() || !file_map_failed.empty()){
         if(count == 5 || file_map.empty()){
@@ -673,6 +685,31 @@ int uploadFile(){
 
 int quit(){
 
+    TCPClient server_connection;
+    string query, reply;
+
+    // ================== QUERY ========================
+    if(connectToServer(server_connection) == -1){
+        exit(1);
+    }
+
+    //command: 5 ip_address
+    query = generate_query(5, "");
+    server_connection.send_data(query);
+    reply = server_connection.read();
+    server_connection.exit();
+    // ================== QUERY ========================
+
+    cout <<  " Exit Sucessfully. Bye." << endl;
+    exit(0);
+    }
+
+    void exitHandler(int signum){
+    if(signum == SIGINT){
+        cout <<  " Program closed abruptedly." << endl;
+        quit();
+    }
+
 }
 
 
@@ -687,6 +724,12 @@ int main()
 
     cout << "Enter IP address of P2P server: ";
     getline(cin, p2pserver_address);
+
+    //terminating with ctrl-c
+    if (signal(SIGINT, exitHandler) == SIG_ERR){
+        cout <<  "Failed to register handler" << endl;
+    }
+
 
     pid = fork();
 

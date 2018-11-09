@@ -97,7 +97,7 @@ string Knowledge_Base::listAllFiles(){
 
     readerLock();
 
-    returnString += "     File Name         File Size          Initial Seeder\n";
+    returnString += "No   File Name         File Size          Initial Seeder\n";
     int i = 1;
     for(auto &itr: fdm){
         returnString += to_string(i) + ".   ";
@@ -107,6 +107,10 @@ string Knowledge_Base::listAllFiles(){
         returnString += fi.initialSeeder + "\n";
         i++;
     }
+
+    returnString += "\nTotal number of files found: ";
+    returnString += to_string(i - 1);
+    returnString += '\n';
 
     readerUnlock();
 

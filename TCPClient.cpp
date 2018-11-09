@@ -71,7 +71,7 @@ int TCPClient::connectTo(string address , int port)
         return -1;
     }
 
-    cout<< "Connected to " + address;
+    cout<< "Connected to " + address << endl;
     return sock;
 }
 
@@ -118,16 +118,15 @@ int TCPClient::receiveAndWriteToFile(string filepath)
     string data;
 
     do{
-        cout << "KEEPS READING" << endl;
         data = read();
         if (data != ""){
             fileData += data.substr(0, data.length());
             // fileData += "\n";
         }
-        cout << data << endl;
+        // cout << data << endl;
     } while (data != "");
 
-    cout << fileData <<endl;
+    // cout << fileData <<endl;
     myfile << fileData;
     myfile.close();
     cout << "FILEWRITTEN AND CLOSED" << endl;
@@ -169,6 +168,23 @@ string TCPClient::read()
 	}
 	return reply;
 }
+
+string TCPClient::readAllFiles(int size = 512)
+{
+  	char buffer[size];
+  	string reply;
+	string test;
+
+    if(recv(sock , buffer , sizeof(buffer) , 0) < 0) {
+        cout << "receive failed!" << endl;
+	    return "";
+	}
+
+	reply = buffer;
+	return reply;
+
+}
+
 
 void TCPClient::exit()
 {
