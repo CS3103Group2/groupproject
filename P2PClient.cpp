@@ -76,13 +76,16 @@ string generate_query(int op, string input)
             break;
         case 6: //Update server on available chunks
             query = "6 " + input + returnchar;
+            break;
         case 7: //Get chunk updates from server
             query = "7 " + input + returnchar;
+            break;
         default:
             query = "" + returnchar;
     }
 
     return query;
+
 
 }
 
@@ -175,16 +178,19 @@ int getUpdateFromServer(string filename){
         return 1;
     }
 
-    for (pair<int, string> element : file_map_failed)
+    std::vector<int> needs_removing;
+    for(auto&& element : file_map_failed)
     {
-    	temp += " " + to_string(element.first) + " " + element.second;
-        mutx_for_failed.lock();
-        file_map_failed.erase(element.first);
-        mutx_for_failed.unlock();
+        temp += " " + to_string(element.first);
+        needs_removing.push_back(element.first);
+    }
+
+    for(auto&& key : needs_removing){
+        file_map_successful.erase(key);
     }
 
     query = generate_query(7, filename + temp);
-    cout << query;
+    // cout << "GETTING UPDATE FROM TRACKER: " + query << endl;
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
@@ -195,7 +201,7 @@ int getUpdateFromServer(string filename){
     };
 
     if(result[0] == "0"){
-        cout << "File is unavailable for download. Server" << endl;
+        cout << "File is unavailable for download - Server" << endl;
         exit(1);
     }
 
@@ -221,12 +227,15 @@ void updateServerOnAvailableChunks(string filename){
         }
     }
 
-    for (pair<int, string> element : file_map_successful)
+    std::vector<int> needs_removing;
+    for(auto&& element : file_map_successful)
     {
-    	temp += " " + to_string(element.first) + " " + element.second;
-        mutx_for_successful.lock();
-        file_map_successful.erase(element.first);
-        mutx_for_successful.unlock();
+        temp += " " + to_string(element.first);
+        needs_removing.push_back(element.first);
+    }
+
+    for(auto&& key : needs_removing){
+        file_map_successful.erase(key);
     }
 
     query = generate_query(6, filename + temp);
