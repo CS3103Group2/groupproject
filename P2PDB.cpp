@@ -170,19 +170,10 @@ string Knowledge_Base::getPeerForChunks(string fn, vector<int> chunkIDList){
 
     for (auto id: chunkIDList){
         itr = temp.find(id);
-<<<<<<< HEAD
-        returnStr += to_string(id) + " ";
-        randomNo = rand() % itr->second.size();
-        returnStr += itr->second[randomNo] + " "; // random peer IP
-    }
-    
-    returnStr += "\r\n";
-=======
         returnStr += " " + to_string(id);
         randomNo = rand() % itr->second.size();
         returnStr += " " + itr->second[randomNo]; // random peer IP
     }
->>>>>>> List&Query
 
     readerUnlock();
 

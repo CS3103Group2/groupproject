@@ -24,11 +24,7 @@ void handleList(string &response){
     if (!KB.isEmpty()){
         response = KB.listAllFiles() + "\r\n";
     } else{
-<<<<<<< HEAD
-        response = "There are currently no files in the network.\n";
-=======
         response = "0 There are currently no files in the network.\r\n";
->>>>>>> List&Query
     }
 }
 
@@ -78,16 +74,6 @@ void handleUpdate(string clientAddr, vector<string> incomingMsg, string &respons
 
 void handleGetChunks(vector<string> &incomingMsg, string & response){
     vector<int> chunkIDList;
-<<<<<<< HEAD
-    for (int i=2; i < (incomingMsg.size()-1); i++){ // last item should be \r\n
-        chunkIDList.push_back(stoi(incomingMsg[i]));
-    }
-    if (KB.containsFile(incomingMsg[1])){
-        response = "1 ";
-        response += KB.getPeerForChunks(incomingMsg[1], chunkIDList);
-    } else{
-        response = "0 \n";
-=======
     for (int i=2; i < incomingMsg.size(); i++){
         chunkIDList.push_back(stoi(incomingMsg[i]));
     }
@@ -96,7 +82,6 @@ void handleGetChunks(vector<string> &incomingMsg, string & response){
         response += KB.getPeerForChunks(incomingMsg[1], chunkIDList) + "\r\n";
     } else{
         response = "0\r\n";
->>>>>>> List&Query
     }
 }
 
@@ -116,21 +101,13 @@ void processIncomingMessage(string message, string &response, string clientAddr)
     } else if (code == "4"){
         handleUpload(clientAddr, result[1], stoi(result[2]), response);
     } else if (code == "5"){
-<<<<<<< HEAD
-        handleExit(clientAddr, response);            
-=======
         handleExit(clientAddr, response);
->>>>>>> List&Query
     } else if (code == "6"){ // update peer's chunk status
         handleUpdate(clientAddr, result, response);
     } else if (code == "7"){
         handleGetChunks(result,response);
     } else{
-<<<<<<< HEAD
-        response = "Action is not defined!\n";
-=======
         response = "0 Action is not defined!\r\n";
->>>>>>> List&Query
     }
 }
 
