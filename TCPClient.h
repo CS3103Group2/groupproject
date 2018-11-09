@@ -31,7 +31,7 @@ public:
   TCPClient();
   int connectTo(string address, int port);
   bool send_data(string data);
-  int receiveAndWriteToFile(string filepath);
+  int receiveAndWriteToFile(string filepath, int filesize);
   string readn();
   string read();
   string readAllFiles(int);

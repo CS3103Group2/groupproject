@@ -96,36 +96,23 @@ bool TCPClient::send_data(string data)
 */
 
 
-int TCPClient::receiveAndWriteToFile(string filepath)
+int TCPClient::receiveAndWriteToFile(string filepath, int filesize)
 {
+    char buffer[filesize];
     ofstream myfile;
     myfile.open(filepath.c_str());
+    string fileData, reply;
+    int recvd;
 
-    // char buffer[1] = {};
-    // char buff0[1] = {'a'}, buff1[1] = {'a'}, buff2[1] = {'a'};
-  	// string reply;
-  	// while ( buff0[0] != '\0' && buff1[0] != '\0' && buff2[0] != '\n' && buffer[0] != '\r') {
-    // 		if(recv(sock , buffer , sizeof(buffer) , 0) < 0){
-    //             cout << "receive failed!" << endl;
-    //             return -1;
-    // 		}
-    //     buff0[0] = buff1[0];
-    //     buff1[0] = buff2[0];
-    //     buff2[0] = buffer[0];
-	// 	reply += buffer[0];
-	// }
-    string fileData;
-    string data;
+	memset(&buffer[0], 0, sizeof(buffer));
 
-    do{
-        cout << "KEEPS READING" << endl;
-        data = read();
-        if (data != ""){
-            fileData += data.substr(0, data.length());
-            // fileData += "\n";
-        }
-        cout << data << endl;
-    } while (data != "");
+	if((recvd = recv(sock , buffer , filesize, 0) < 0)){
+	    cout << "receive failed!" << endl;
+  	}
+
+
+  	reply = buffer;
+    fileData = reply;
 
     cout << fileData <<endl;
     myfile << fileData;
@@ -133,22 +120,6 @@ int TCPClient::receiveAndWriteToFile(string filepath)
     cout << "FILEWRITTEN AND CLOSED" << endl;
     return 1;
 }
-//
-// string TCPClient::readn()
-// {
-//   	char buffer[1] = {};
-//   	string reply;
-//   	while (buffer[0] != '\n') {
-//     		if(recv(sock , buffer , sizeof(buffer) , 0) <= 0){
-//                 cout << "receive failed!" << endl;
-// 			    return "";
-//     		}
-// 		reply += buffer[0];
-// 	}
-//     cout << "REPLY: " + reply << endl;
-//     sleep(2);
-// 	return reply;
-// }
 
 string TCPClient::read()
 {
@@ -177,9 +148,9 @@ string TCPClient::readAllFiles(int size = 512)
   	string reply;
 	string test;
 
-    	if(recv(sock , buffer , sizeof(buffer) , 0) < 0) {
-        	cout << "receive failed!" << endl;
-	return "";
+    if(recv(sock , buffer , sizeof(buffer) , 0) < 0) {
+        cout << "receive failed!" << endl;
+	    return "";
 	}
 
 	cout << endl;

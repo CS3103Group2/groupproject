@@ -26,15 +26,17 @@
 #include <sstream>
 #include <sys/stat.h>
 
-
+#define PORT 15000
+#definr TUNRPORT 15001
 
 using namespace std;
 typedef unordered_map<int, string> FILE_IPADDR_MAP;
 const int DEFAULT_CHUNK_SIZE = 1024;
 
-string p2pserver_address;
+string p2pserver_address, turnserver_address, my_public_ipaddr;
 FILE_IPADDR_MAP file_map, file_map_failed, file_map_successful;
 mutex mutx, mutx_for_failed, mutx_for_successful;
+TCPClient persistentClient;
 
 /******************************************************************************
 ***************************** Utilities  **************************************
@@ -74,13 +76,16 @@ string generate_query(int op, string input)
             break;
         case 6: //Update server on available chunks
             query = "6 " + input + returnchar;
+            break;
         case 7: //Get chunk updates from server
             query = "7 " + input + returnchar;
+            break;
         default:
             query = "" + returnchar;
     }
 
     return query;
+
 
 }
 
@@ -107,29 +112,54 @@ int connectToServer(TCPClient &tcp_client)
 }
 
 
-int connectToClient(TCPClient &tcp_client, string ip_addr)
+int connectToTURN(TCPClient &tcp_client)
 {
     int sock = -1;
     int count = 0;
+    string response = "y";
     do{
-        if(count != 0){
-            tcp_client = *(new TCPClient());
-        }
-
-        sock = tcp_client.connectTo(ip_addr, PORT);
+        tcp_client = *(new TCPClient());
+        sock = tcp_client.connectTo(turnserver_address, TURNPORT);
         count++;
 
         if (count == 5) {
-            cout << "\nUnable to connectTo to " << ip_addr << " client.";
+            cout << "\nUnable to connectTo to TURN Server. Do you want to try again? [y/n]";
+            cin >> response;
             count = 0;
-            return -1;
         }
 
-    } while(sock == -1);
-
-    //TODO: handle peer client connection error
+    } while(sock == -1 && response.compare("y") == 0);
 
     return sock;
+
+}
+
+
+int connectToClient(string peer_ip_addr)
+{
+    TCPClient turn_connection;
+    string request, reply;
+    int sock, i;
+
+    if((sock = connectToTURN(turn_connection)) < 0) {
+        return -1;
+    }
+
+    request = "2 " + my_public_ipaddr + " " + peer_ip_addr + "\r\n";
+    turn_connection.send_data(request);
+    reply = turn_connection.read();
+    for(i = 0; i < 2; i++){
+        if(reply == "1"){
+            cout << "Access granted by TURN to " << ip_addr << endl;
+            turn_connection.exit();
+            return sock;
+        } else {
+            sleep(rand() % 5);
+            continue;
+        }
+    }
+    turn_connection.exit();
+    return  -1;
 
 }
 
@@ -148,16 +178,19 @@ int getUpdateFromServer(string filename){
         return 1;
     }
 
-    for (pair<int, string> element : file_map_failed)
+    std::vector<int> needs_removing;
+    for(auto&& element : file_map_failed)
     {
-    	temp += " " + to_string(element.first) + " " + element.second;
-        mutx_for_failed.lock();
-        file_map_failed.erase(element.first);
-        mutx_for_failed.unlock();
+        temp += " " + to_string(element.first);
+        needs_removing.push_back(element.first);
+    }
+
+    for(auto&& key : needs_removing){
+        file_map_successful.erase(key);
     }
 
     query = generate_query(7, filename + temp);
-    cout << query;
+    // cout << "GETTING UPDATE FROM TRACKER: " + query << endl;
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
@@ -168,7 +201,7 @@ int getUpdateFromServer(string filename){
     };
 
     if(result[0] == "0"){
-        cout << "File is unavailable for download. Server" << endl;
+        cout << "File is unavailable for download - Server" << endl;
         exit(1);
     }
 
@@ -194,12 +227,15 @@ void updateServerOnAvailableChunks(string filename){
         }
     }
 
-    for (pair<int, string> element : file_map_successful)
+    std::vector<int> needs_removing;
+    for(auto&& element : file_map_successful)
     {
-    	temp += " " + to_string(element.first) + " " + element.second;
-        mutx_for_successful.lock();
-        file_map_successful.erase(element.first);
-        mutx_for_successful.unlock();
+        temp += " " + to_string(element.first);
+        needs_removing.push_back(element.first);
+    }
+
+    for(auto&& key : needs_removing){
+        file_map_successful.erase(key);
     }
 
     query = generate_query(6, filename + temp);
@@ -268,7 +304,6 @@ void joinFile(string filename) {
 void downloadChunkFromPeer(string filename){
     int chunkid, status;
     string ipaddr;
-    TCPClient peerClient;
     string reply;
     string filepath = filename + "_chunks";
 
@@ -283,7 +318,7 @@ void downloadChunkFromPeer(string filename){
     file_map.erase(chunkid);
     mutx.unlock();
 
-    if(connectToClient(peerClient, ipaddr) == -1){
+    if(connectToClient(ipaddr) == -1){
         //Add pair back into filemap
         mutx.lock();
         file_map.insert((pair<int,string>) make_pair(chunkid, ipaddr));
@@ -291,9 +326,10 @@ void downloadChunkFromPeer(string filename){
         return;
     }
 
+    persistentClient.send_data("1\r\n");
     cout << "Sending : " + filename + " " + to_string(chunkid) << endl;
-    peerClient.send_data(filename + " " + to_string(chunkid));
-    reply = peerClient.read();
+    persistentClient.send_data(filename + " " + to_string(chunkid));
+    reply = persistentClient.read();
 
     if(reply[0] == '0') {
         cout << "RESPONSE: 0" << endl;
@@ -301,19 +337,25 @@ void downloadChunkFromPeer(string filename){
         file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
         mutx_for_failed.unlock();
         return;
-    } else if (peerClient.receiveAndWriteToFile(filepath + "/" + to_string(chunkid)) < 0){
+    } else {
+
         cout << "RESPONSE: 1" << endl;
-        mutx_for_failed.lock();
-        file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
-        mutx_for_failed.unlock();
+        reply = persistentClient.read();
+        cout << "FILE SIZE: " + reply << endl;
+        int filesize = stoi(reply);
+
+        if (persistentClient.receiveAndWriteToFile(filepath + "/" + to_string(chunkid), filesize) < 0) {
+            mutx_for_failed.lock();
+            file_map_failed.insert((pair<int,string>) make_pair(chunkid, ipaddr));
+            mutx_for_failed.unlock();
+        }
         return;
     }
-    peerClient.exit();
-
-    cout << "EXITED" << endl;
     mutx_for_successful.lock();
     file_map_successful.insert((pair<int,string>) make_pair(chunkid, ipaddr));
     mutx_for_successful.unlock();
+
+    cout << "EXITED" << endl;
 
     return;
 
@@ -387,10 +429,10 @@ bool sendfile(int sock, FILE *f)
 {
 
     fseek(f, 0, SEEK_END);
-            long filesize = ftell(f);
-             rewind(f);
-             if (filesize == EOF)
-                 return false;
+    long filesize = ftell(f);
+    rewind(f);
+    if (filesize == EOF)
+        return false;
     if (filesize > 0)
     {
         char buffer[DEFAULT_CHUNK_SIZE];
@@ -405,15 +447,20 @@ bool sendfile(int sock, FILE *f)
             filesize -= num;
         }
         while (filesize > 0);
-	string terminatechar = "\0\0\r\n";
-	send(sock, terminatechar.c_str(), terminatechar.length(), 0);
     }
     return true;
 }
 
 
+unsigned int fsizeof_full(FILE *fp) {
+    unsigned int size;
+    while(getc(fp) != EOF)
+        ++size;
+    return size;
+}
 
-void handleDownloadRequestFromPeer(int sock, string clientAddr){
+
+void handleDownloadRequestFromPeer(int sock){
 
     int bytesRecved;
     char buffer[DEFAULT_CHUNK_SIZE];
@@ -423,7 +470,8 @@ void handleDownloadRequestFromPeer(int sock, string clientAddr){
             break;
         }
         buffer[bytesRecved] = '\0';
-        cout <<"Thread connecting to " << clientAddr << " has received " << buffer << endl;
+        cout << "Incoming client connecting to me" << end;
+        cout << "Received :" << buffer << endl;
         string message(buffer);
         string response;
 
@@ -436,8 +484,14 @@ void handleDownloadRequestFromPeer(int sock, string clientAddr){
         if (filehandle != NULL)
         {
             cout << "RESPONSE: 1" << endl;
-            response = "1\n";
+            response = "1\r\n";
             send(sock, response.c_str(), response.length(), 0);
+
+
+            response = to_string(fsizeof_full(filehandle)) + "\n";
+            cout << "SEND FILESIZE: " << response << endl;
+            send(sock, response.c_str(), response.length(), 0);
+
             sendfile(sock, filehandle);
             cout << "FILESENT" << endl;
 		    sleep(2);
@@ -445,7 +499,7 @@ void handleDownloadRequestFromPeer(int sock, string clientAddr){
             break;
         } else {
             cout << "RESPONSE: 0" << endl;
-            response = "0\n";
+            response = "0\r\n";
             send(sock, response.c_str(), response.length(), 0);
             fclose(filehandle);
             break;
@@ -473,7 +527,7 @@ int listFiles()
 
     query = "1 \n";
     server_connection.send_data(query);
-    reply = server_connection.read();
+    reply = server_connection.readAllFiles(1024);
     server_connection.exit();
 
     cout << reply << endl;
@@ -704,13 +758,24 @@ void exitHandler(int signum){
 int main()
 {
     pid_t pid;
-    int op, mySock, cnxnSock;
-    string str;
+    int op, cnxnSock;
+    string str, request, reply;
     struct sockaddr_in myAddress;
     struct sockaddr_in clientAddress;
 
     cout << "Enter IP address of P2P server: ";
     getline(cin, p2pserver_address);
+
+    cout << "Enter IP address of TURN server: ";
+    getline(cin, turnserver_address);
+
+    if(connectToTURN(persistentClient) == -1){
+        exit(1);
+    }
+
+    request = "1\r\n";
+    cnxnSock = persistentClient.send_data(request);
+    my_public_ipaddr = persistentClient.read();
 
     //terminating with ctrl-c
     if (signal(SIGINT, exitHandler) == SIG_ERR){
@@ -723,22 +788,13 @@ int main()
         // Uncomment for child handling (only on linux)
         // prctl(PR_SET_PDEATHSIG, SIGKILL);
 
-        mySock = socket(AF_INET, SOCK_STREAM, 0);
-     	memset(&myAddress,0,sizeof(myAddress));
-    	myAddress.sin_family = AF_INET;
-    	myAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-    	myAddress.sin_port = htons(PORT);
-    	bind(mySock,(struct sockaddr *)&myAddress, sizeof(myAddress));
-
-        listen(mySock,1);
-
-        socklen_t sosize  = sizeof(clientAddress);
-
-        while (1){
-            cnxnSock = accept(mySock, (struct sockaddr*)&clientAddress, &sosize);
-            cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
-            thread slave(handleDownloadRequestFromPeer, cnxnSock, inet_ntoa(clientAddress.sin_addr));
-            slave.detach();
+        while(1){
+            reply = persistentClient.read();
+            if(reply == "0"){ //keep-alive packet
+                //do nothing
+            } else if (reply == "1"){
+                handleDownloadRequestFromPeer(cnxnSock);
+            }
         }
 
         close(mySock);
