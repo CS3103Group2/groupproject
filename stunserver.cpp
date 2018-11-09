@@ -16,88 +16,60 @@
 #include <regex>
 #include <mutex>
 #include "TCPClient.h"
+#include <math.h>
+#include <sstream>
+#include <sys/stat.h>
 
-typedef unordered_map<string, int> IPADDR_MAP;
-
-IPADDR_MAP ip_available;
-
-int connectToPeer(TCPClient &tcp_client, string ip_address)
-{
-    int sock = -1;
-    int count = 0;
-    string response = "y";
-    do{
-        tcp_client = *(new TCPClient());
-        sock = tcp_client.connectTo(ip_address, PORT);
-        count++;
-
-        if (count == 5) {
-            cout << "\nUnable to connectTo. Do you want to try again? [y/n]";
-            cin >> response;
-            count = 0;
-        }
-
-    } while(sock == -1 && response.compare("y") == 0);
-
-    return sock;
-
-}
+void processIncomingMessage(string, string*, string );
+void threadHandler(int , string clientAddr);
 
 
-bool detectIPAddress(const string& addr)
-{
-   struct sockaddr_in sa;
-   if (inet_pton(AF_INET, addr.c_str(), &(sa.sin_addr)))
-       return true;
-   return false;
-}
+const int stun_Listening_Port = 15001;
+const int MAXBUFFERSIZE = 10000;
 
+typedef unordered_map <string, int> IPADDR_MAP;
+unordered_map <string, int>::iterator it;
 
-void request_download(string dest_ip, string &response){
-	TCPClient dest_connection;
-	string src_ip;
+IPADDR_MAP ip_available, ip_unavailable, ip_sock_mapping;
 
-	// Request <IP>
-	if(ip_available.find(dest_ip)){
-		ip_available[dest_ip] = 0; //no longer available to connect to
-		ip_available[src_ip] = 0;
-	}
+void request_mapping(string &response, string clientAddress){
 
+	// Getting client public ip address
+	response = clientAddress;
 
-	request_bridging(dest_ip);
-
-
-	if (connectToPeer(dest_connection) == -1) { //failed to connect
-		response = "Successfully established connection."; }
-	else if (response = "0") {
-		response = "Failed to establish connection. Please retry again."; }
-	else if (response = "2") {
-		response = "Client does not exist."; }
-}
-
-
-
-int request_bridging(string &ipAddress, string &response){
-	// Check if client is available
-	bool result = detectIPAddress(ipAddress);
-	int response;
-
-	if (result == true) { // If client is available
-		// Bridge the connection between clients
-		response = 1;
-	}
-
-	else{ //Else if client is not available
-		if (result == false) {
-			// Return 0 if client exists but failed to establish connection
-			response = 0;
-		}
-		else{
-			// Return 2 if client does not exists
-			response = 2;
+	// Thread handling to keep connection alive
+	ip_available.insert((pair<string,int>) make_pair(clientAddress, 0));
+	for (it = ip_available.begin(); it != ip_available.end(); it++) {
+		if (it->second == 0) {
+			//Send redundant packet as the thread is not in use
+				response = "0\r\n";
 		}
 	}
 }
+
+int request_bridging(string &response, string clientAddress, string destinationAddress){
+
+	int srcSock, destSock;
+
+	// Check if client is available and update accordingly
+	
+	if (ip_available[destinationAddress] == 0) {
+		response = "1\n";
+		ip_available[clientAddress] = 1;
+		ip_available[destinationAddress] = 1;
+		ip_unavailable.insert((pair<string,int>) make_pair(clientAddress, 0));
+		ip_unavailable.insert((pair<string,int>) make_pair(destinationAddress, 0));
+
+		//Thread handler of srcSock and destSock
+		srcSock = ip_sock_mapping[clientAddress];
+		destSock = ip_sock_mapping[destinationAddress];
+		threadHandler(srcSock, clientAddress);
+		threadHandler(destSock, destinationAddress);
+
+	}
+	
+}
+
 
 void processIncomingMessage(string message, string &response, string clientAddr){
 
@@ -107,8 +79,11 @@ void processIncomingMessage(string message, string &response, string clientAddr)
     };
     string code = result[0];
     if (code == "1"){
-        request_download(response);
-    } else{
+        request_mapping(response, clientAddr);
+    }  else if (code == "2"){
+        request_bridging(response, result[1], result[2]);
+    }
+    else{
         response = "0 Action is not defined!\r\n";
     }
 }
@@ -134,6 +109,7 @@ void threadHandler(int sock, string clientAddr){
 
 }
 
+
 int main(int argc, char const *argv[])
 {
     int serverSock, cnxnSock;
@@ -145,7 +121,7 @@ int main(int argc, char const *argv[])
  	memset(&serverAddress,0,sizeof(serverAddress));
 	serverAddress.sin_family=AF_INET;
 	serverAddress.sin_addr.s_addr=htonl(INADDR_ANY);
-	serverAddress.sin_port=htons(P2PPort);
+	serverAddress.sin_port=htons(stun_Listening_Port);
 	bind(serverSock,(struct sockaddr *)&serverAddress, sizeof(serverAddress));
 
     listen(serverSock,1);
@@ -155,6 +131,8 @@ int main(int argc, char const *argv[])
     while (1){
         cnxnSock = accept(serverSock,(struct sockaddr*)&clientAddress,&sosize);
         cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
+        // Insert <ip address, socket> mapping to map whenever receive connection
+        ip_sock_mapping.insert((pair<string,int>) make_pair(inet_ntoa(clientAddress.sin_addr)), cnxnSock);
         thread slave(threadHandler, cnxnSock, inet_ntoa(clientAddress.sin_addr));
         slave.detach();
     }
