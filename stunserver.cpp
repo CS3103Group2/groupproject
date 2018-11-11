@@ -101,8 +101,8 @@ void processIncomingMessage(string message, string &response, string clientAddre
     } else if (code == "2"){
         int value = request_bridging(response, result[1], result[2]);
 
-        if(value == 1){ //successful in bridging
-
+        if(value == 1){ //succesful in bridging
+            start_bridging(result[1], result[2]);
         }
 
     } else{
@@ -140,7 +140,9 @@ void keepAlive(string &response){
             if (it->second == 0) {
                 //Send redundant packet as the thread is not in use
                 response = "0\r\n";
-                //send(sock, response.c_str(), response.length(), 0);
+                //get the socket with the given IP address
+                int sock = ip_sock_mapping[it->first];
+                send(sock, response.c_str(), response.length(), 0);
             }
         }
 
@@ -150,6 +152,7 @@ void keepAlive(string &response){
 
 int main(int argc, char const *argv[])
 {
+
     int serverSock, cnxnSock;
     string str, ip_address;
 	struct sockaddr_in serverAddress;
