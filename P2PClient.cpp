@@ -737,7 +737,7 @@ int quit(){
     }
 
     //command: 5 ip_address
-    query = generate_query(5, "");
+    query = generate_query(5, my_public_ipaddr);
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();
