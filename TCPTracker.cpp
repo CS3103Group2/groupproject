@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/types.h> 
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string.h>
@@ -148,15 +148,15 @@ int main(int argc, char const *argv[])
     string str;
 	struct sockaddr_in serverAddress;
     struct sockaddr_in clientAddress;
-    
+
     serverSock=socket(AF_INET,SOCK_STREAM,0);
  	memset(&serverAddress,0,sizeof(serverAddress));
 	serverAddress.sin_family=AF_INET;
 	serverAddress.sin_addr.s_addr=htonl(INADDR_ANY);
 	serverAddress.sin_port=htons(P2PPort);
 	bind(serverSock,(struct sockaddr *)&serverAddress, sizeof(serverAddress));
-    
-    listen(serverSock,1);
+
+    listen(serverSock,10);
 
     socklen_t sosize  = sizeof(clientAddress);
 
@@ -165,17 +165,15 @@ int main(int argc, char const *argv[])
     KB.uploadNewFile("192.168.1.2", "Tatsh.txt", 2000000);
     KB.uploadNewFile("220.255.12.10", "Mirai.txt", 3000000);
     KB.uploadNewFile("120.245.13.10", "Osu.txt", 4000000);
-    KB.uploadNewFile("150.15.243.109", "Wizard.txt", 5000000); 
+    KB.uploadNewFile("150.15.243.109", "Wizard.txt", 5000000);
 
     while (1){
         cnxnSock = accept(serverSock,(struct sockaddr*)&clientAddress,&sosize);
         cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
-        thread slave(threadHandler, cnxnSock);   
+        thread slave(threadHandler, cnxnSock);
         slave.detach();
     }
 
     close(serverSock);
     return 0;
 }
-
-

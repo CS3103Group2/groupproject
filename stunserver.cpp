@@ -45,7 +45,7 @@ int request_bridging(string &response, string clientAddress, string destinationA
 
 	// Check if client is available and update accordingly
 
-	if (ip_available[destinationAddress] == 0 && ip_available[clientAddress == 0]) {
+	if (ip_available[destinationAddress] == 0 && ip_available[clientAddress] == 0) {
 		response = "1\n";
         return 1;
 	}
@@ -108,6 +108,8 @@ void processIncomingMessage(string message, string &response, string clientAddre
     } else{
         response = "0 Action is not defined!\r\n";
     }
+
+    response += "\r\n";
 }
 
 void onStartConnection(int sock, string clientAddr){
@@ -165,7 +167,7 @@ int main(int argc, char const *argv[])
 	serverAddress.sin_port=htons(stun_Listening_Port);
 	bind(serverSock,(struct sockaddr *)&serverAddress, sizeof(serverAddress));
 
-    listen(serverSock,1);
+    listen(serverSock, 10);
 
     socklen_t sosize  = sizeof(clientAddress);
 
@@ -174,7 +176,6 @@ int main(int argc, char const *argv[])
         cnxnSock = accept(serverSock,(struct sockaddr*)&clientAddress,&sosize);
         cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
         ip_address = inet_ntoa(clientAddress.sin_addr);
-
         onStartConnection(cnxnSock, ip_address);
     }
 
