@@ -32,13 +32,17 @@ unordered_map <string, int>::iterator it;
 
 IPADDR_MAP ip_available, ip_unavailable, ip_sock_mapping;
 
-void request_mapping(string &response, string clientAddress, int sock){
+void request_mapping(string &response, string clientAddress_port, int sock){
+
+    string delimiter = ":";
+    //extract client IP Address
+    string clientAddress = clientAddress_port.substr(0, clientAddress_port.find(delimiter));
 
     // Insert <ip address, socket> mapping to map whenever receive connection
-    ip_sock_mapping.insert((pair<string,int>) make_pair(clientAddress, sock));
+    ip_sock_mapping.insert((pair<string,int>) make_pair(clientAddress_port, sock));
 
 	// response: ipAddress\r\n
-	response = clientAddress;
+	response = clientAddress + "\r\n";
 }
 
 int request_bridging(string &response, string clientAddress, string destinationAddress){
@@ -46,11 +50,48 @@ int request_bridging(string &response, string clientAddress, string destinationA
 	// Check if client is available and update accordingly
 
 	if (ip_available[destinationAddress] == 0 && ip_available[clientAddress] == 0) {
-		response = "1\n";
+		response = "1\r\n";
         return 1;
 	}
 
     return -1;
+
+}
+
+string readMessage(int sock)
+{
+    char buffer[1] = {};
+    string reply = "";
+    int rcvd;
+
+    while (buffer[0] != '\n') {
+        rcvd = recv(sock , buffer , sizeof(buffer) , 0);
+        if(rcvd < 0)
+        {
+            cout << "receive failed!" << endl;
+            return NULL;
+        }
+        if (rcvd == 0){
+            return reply;
+        }
+        reply += buffer[0];
+    }
+    return reply;
+}
+
+string readFileChunks(int sock, int filesize){
+
+    char buffer[filesize];
+    int recvd;
+    string reply = "";
+
+    if((recvd = recv(sock , buffer , filesize, 0) < 0)){
+        cout << "receive failed!" << endl;
+    }
+
+    reply = buffer;
+
+    return reply;
 
 }
 
@@ -60,12 +101,44 @@ void threadDataHandler(int srcSock, int destSock){
     int bytesRecved;
     char buffer[MAXBUFFERSIZE];
 
-    if ((bytesRecved = recv(srcSock, buffer, MAXBUFFERSIZE, 0)) <= 0){
-        return;
-    }
-    buffer[bytesRecved] = '\0';
+    int senderCounter = 0;
+    int receiverCounter = 0;
+    int fileSize = 0;
 
-    send(destSock, buffer, strlen(buffer), 0);
+    //sender to receiver
+    while(senderCounter < 2){
+
+        string reply = readMessage(srcSock);
+
+        send(destSock, reply.c_str(), reply.length(), 0);
+
+        senderCounter++;
+    }
+    string reply;
+    //receiver to sender
+    while(receiverCounter < 3){
+
+        if (receiverCounter == 0){
+            reply = readMessage(destSock);
+
+            reply += "\r\n";
+
+        } else if(receiverCounter == 1){ // receive file size
+            
+            reply = readMessage(destSock);
+
+            fileSize = stoi(reply);
+
+            reply += "\r\n";
+
+        } else if(receiverCounter == 2){ // read file chunks
+            reply = readFileChunks(destSock, fileSize);
+        }
+
+        send(destSock, reply.c_str(), reply.length(), 0);
+
+        receiverCounter++;
+    }
 
 }
 
@@ -87,7 +160,17 @@ void start_bridging(string clientAddress, string destinationAddress){
     bridging.join();
 }
 
-void processIncomingMessage(string message, string &response, string clientAddress, int sock){
+void complete_bridging(string clientAddress, string destAddress){
+    ip_available[clientAddress] = 0;
+    ip_available[destAddress] = 0;
+
+    ip_unavailable.erase(clientAddress);
+    ip_unavailable.erase(destAddress);
+}
+
+int processIncomingMessage(string message, string &response, string clientAddress_port, int sock){
+
+    int toCloseSocket = 1; //1 to close, 0 stay open
 
     regex ws_re("\\s+");
     vector<string> result{
@@ -97,22 +180,34 @@ void processIncomingMessage(string message, string &response, string clientAddre
     string code = result[0];
 
     if (code == "1"){
-        request_mapping(response, clientAddress, sock);
+        request_mapping(response, clientAddress_port, sock);
+        toCloseSocket = 0;
     } else if (code == "2"){
         int value = request_bridging(response, result[1], result[2]);
 
         if(value == 1){ //succesful in bridging
             start_bridging(result[1], result[2]);
+            response = "1";
+            toCloseSocket = 0;
+        } else{ 
+            // not successful in connection, 
+            // ignore the bridging, close the socket that request
+            response = "0\r\n";
+            return toCloseSocket = 1;
         }
 
+        complete_bridging(result[1], result[2]);
+
     } else{
-        response = "0 Action is not defined!\r\n";
+        response = "0 Action is not defined!";
     }
 
     response += "\r\n";
+
+    return toCloseSocket;
 }
 
-void onStartConnection(int sock, string clientAddr){
+void onStartConnection(int sock, string clientAddress_port){
 
     int bytesRecved;
     char buffer[MAXBUFFERSIZE];
@@ -125,8 +220,12 @@ void onStartConnection(int sock, string clientAddr){
 
         string msg(buffer);
         string response;
-        processIncomingMessage(msg, response, clientAddr, sock);
+        int result = processIncomingMessage(msg, response, clientAddress_port, sock);
         send(sock, response.c_str(), response.length(), 0);
+
+        if(result == 1){
+            break;
+        }
     }
 
     close(sock);
@@ -156,7 +255,8 @@ int main(int argc, char const *argv[])
 {
 
     int serverSock, cnxnSock;
-    string str, ip_address;
+    int portNum;
+    string str, ip_address, ip_address_port;
 	struct sockaddr_in serverAddress;
     struct sockaddr_in clientAddress;
 
@@ -167,7 +267,7 @@ int main(int argc, char const *argv[])
 	serverAddress.sin_port=htons(stun_Listening_Port);
 	bind(serverSock,(struct sockaddr *)&serverAddress, sizeof(serverAddress));
 
-    listen(serverSock, 10);
+    listen(serverSock,10);
 
     socklen_t sosize  = sizeof(clientAddress);
 
@@ -175,8 +275,15 @@ int main(int argc, char const *argv[])
         // listen for incoming connections
         cnxnSock = accept(serverSock,(struct sockaddr*)&clientAddress,&sosize);
         cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
+        
         ip_address = inet_ntoa(clientAddress.sin_addr);
-        onStartConnection(cnxnSock, ip_address);
+        portNum = clientAddress.sin_port;
+
+        ip_address_port = ip_address + ":" + std::to_string(portNum);
+        onStartConnection(cnxnSock, ip_address_port);
+
+        //hread onStart(onStartConnection, cnxnSock, ip_address);
+        //onStart.join();
     }
 
     close(serverSock);
