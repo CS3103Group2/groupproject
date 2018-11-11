@@ -61,6 +61,7 @@ string generate_query(int op, string input)
     switch(op)
     {
         case 1: //
+            query = "1 " + input + returnchar;
             break;
         case 2: //Query a file
 			query = "2 " + input + returnchar;
@@ -238,7 +239,7 @@ void updateServerOnAvailableChunks(string filename){
         file_map_successful.erase(key);
     }
 
-    query = generate_query(6, filename + temp);
+    query = generate_query(6, my_public_ipaddr + " " + filename + temp);
     server_connection.send_data(query);
     server_connection.exit();
 
@@ -525,7 +526,7 @@ int listFiles()
         exit(1);
     }
 
-    query = "1 \n";
+    query = generate_query(1, "");
     server_connection.send_data(query);
     reply = server_connection.readAllFiles(1024);
     server_connection.exit();
@@ -665,7 +666,7 @@ int uploadFile(){
         exit(1);
     }
 
-    query = generate_query(4, filename + " " + to_string(fileSize) + " " + to_string(num_of_chunks) + "\n");
+    query = generate_query(4, my_public_ipaddr + " " + filename + " " + to_string(fileSize) + " " + to_string(num_of_chunks) + "\n");
     server_connection.send_data(query);
     reply = server_connection.read();
     server_connection.exit();

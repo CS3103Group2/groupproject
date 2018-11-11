@@ -44,29 +44,29 @@ void request_mapping(string &response, string clientAddress, int sock){
 int request_bridging(string &response, string clientAddress, string destinationAddress){
 
 	// Check if client is available and update accordingly
-	
-	if (ip_available[destinationAddress] == 0) {
+
+	if (ip_available[destinationAddress] == 0 && ip_available[clientAddress == 0]) {
 		response = "1\n";
         return 1;
 	}
 
     return -1;
-	
+
 }
 
 //sending info for bridging
 void threadDataHandler(int srcSock, int destSock){
-    
+
     int bytesRecved;
     char buffer[MAXBUFFERSIZE];
-    
+
     if ((bytesRecved = recv(srcSock, buffer, MAXBUFFERSIZE, 0)) <= 0){
         return;
     }
     buffer[bytesRecved] = '\0';
 
     send(destSock, buffer, strlen(buffer), 0);
-    
+
 }
 
 void start_bridging(string clientAddress, string destinationAddress){
@@ -101,7 +101,7 @@ void processIncomingMessage(string message, string &response, string clientAddre
     } else if (code == "2"){
         int value = request_bridging(response, result[1], result[2]);
 
-        if(value == 1){ //succesful in bridging
+        if(value == 1){ //successful in bridging
 
         }
 
@@ -111,12 +111,11 @@ void processIncomingMessage(string message, string &response, string clientAddre
 }
 
 void onStartConnection(int sock, string clientAddr){
-    
+
     int bytesRecved;
     char buffer[MAXBUFFERSIZE];
 
     while(1){
-
         if ((bytesRecved = recv(sock, buffer, MAXBUFFERSIZE, 0)) <= 0){
             break;
         }
@@ -169,10 +168,10 @@ int main(int argc, char const *argv[])
 
     while (1){
         // listen for incoming connections
-        cnxnSock = accept(serverSock,(struct sockaddr*)&clientAddress,&sosize); 
+        cnxnSock = accept(serverSock,(struct sockaddr*)&clientAddress,&sosize);
         cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
         ip_address = inet_ntoa(clientAddress.sin_addr);
-        
+
         onStartConnection(cnxnSock, ip_address);
     }
 
