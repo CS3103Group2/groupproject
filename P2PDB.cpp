@@ -7,7 +7,7 @@ void Knowledge_Base::readerLock(){
     readcount++;                 //report yourself as a reader
     if (readcount == 1) {        //checks if you are first reader
         resource.lock();            //if you are first reader, lock  the resource
-    }
+    }             
     rmutex.unlock();                  //release entry section for other readers
     readTry.unlock();                 //indicate you are done trying to access the resource
 }
@@ -28,12 +28,12 @@ void Knowledge_Base::writerLock(){
         readTry.lock();               //if you're first, then you must lock the readers out. Prevent them from trying to enter CS
     }
     wmutex.unlock();                  //release entry section
-
+    
     resource.lock();                //reserve the resource for yourself - prevents other writers from simultaneously editing the shared resource
 }
 void Knowledge_Base::writerUnlock(){
     resource.unlock();                //release file
-
+    
     wmutex.lock();                  //reserve exit section
     writecount--;                //indicate you're leaving
     if (writecount == 0) {        //checks if you're the last writer
@@ -110,7 +110,7 @@ string Knowledge_Base::listAllFiles(){
 
     returnString += "\nTotal number of files found: ";
     returnString += to_string(i - 1);
-    returnString += '\n';
+    returnString += '\n'; 
 
     readerUnlock();
 
@@ -128,7 +128,7 @@ string Knowledge_Base::downloadFile(string fileName){
     returnStr += " " + to_string(File_List[fileName].size()); // num of chunk
     int randomNo;
     int i=1;
-
+    
     srand (time(NULL));
     for (auto itr: File_List[fileName]){
         returnStr += " " + to_string(itr.first);    //chunk id
@@ -162,7 +162,7 @@ string Knowledge_Base::getPeerForChunks(string fn, vector<int> chunkIDList){
 
     int randomNo;
     int i=1;
-
+    
     srand (time(NULL));
 
     CHUNK_IP_MAP::const_iterator itr;
@@ -202,7 +202,7 @@ void Knowledge_Base::uploadNewFile(string ipAddr, string fileName, int fileSize)
         for (int i=1; i<= num_chunks; i++){
             chunkIPMap[i] = peerIPList;
         }
-        File_List[fileName] = chunkIPMap;
+        File_List[fileName] = chunkIPMap;        
     }
 
     // update fdm
@@ -213,14 +213,14 @@ void Knowledge_Base::uploadNewFile(string ipAddr, string fileName, int fileSize)
         fi.fileSize = fileSize;
         fi.initialSeeder = ipAddr;
         fdm[fileName] = fi;
-    }
+    }    
 
     writerUnlock();
-
+    
 }
 
 void Knowledge_Base::printEverything(){
-
+    
     readerLock();
 
     cout << "file list size = " << File_List.size() << endl;
@@ -295,7 +295,7 @@ int main(int argc, char const *argv[])
     temp.push_back(2);
     temp.push_back(5);
     temp.push_back(8);
-
+    
     KB.updatePeerFileChunkStatus("129.52.31.221", "Test.txt", temp);
     cout << KB.downloadFile("Test.txt") << endl;
     //KB.printEverything();
@@ -316,3 +316,4 @@ KB.printEverything();
     return 0;
 }
 */
+
