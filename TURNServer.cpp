@@ -38,12 +38,13 @@ void request_mapping(string &response, string clientAddress, int portNum, int so
 
     string ip_address_port = clientAddress + ":" + to_string(portNum);
     // Insert <ip address:port, socket> mapping to map whenever receive connection
-    //ip_sock_mapping.insert((pair<string,int>) make_pair(ip_address_port, sock));
-    ip_sock_mapping.insert((pair<string,int>) make_pair(clientAddress, sock));
+    ip_sock_mapping.insert((pair<string,int>) make_pair(ip_address_port, sock));
+    //ip_sock_mapping.insert((pair<string,int>) make_pair(clientAddress, sock));
     cout << "sock: " << sock << endl;
 	
     // response: ipAddress\r\n
-	response = clientAddress + "\r\n";
+	response = ip_address_port + "\r\n";
+    //response = clientAddress + "\r\n";
 }
 
 int request_bridging(string &response, string clientAddress, string destinationAddress){
@@ -101,8 +102,10 @@ string readMessage(int sock)
         }
         reply += buffer[0];
 
-        cout << reply << endl;
+        
     }
+
+    cout << "reply:" << reply << endl;
     return reply;
 }
 
@@ -112,11 +115,23 @@ string readFileChunks(int sock, int filesize){
     int recvd;
     string reply = "";
 
+    memset(&buffer[0], 0, sizeof(buffer));
+
     if((recvd = recv(sock , buffer , filesize, 0) < 0)){
         cout << "receive failed! File" << endl;
     }
 
+    /*while(1){
+        if((recvd = recv(sock , buffer , filesize, 0) < 0)){
+            cout << "receive failed! File" << endl;
+        } else
+            break;
+    */
+    cout << "file recvd value: " << recvd << endl;
+
     reply = buffer;
+
+    cout << "file reply: " << reply << endl; 
 
     return reply;
 
@@ -153,11 +168,11 @@ void threadDataHandler(int srcSock, int destSock, string srcAddress, string dest
     int receiverCounter = 0;
     int fileSize = 0;
 
-    //sender to receiver
+    //source to destination
     while(senderCounter < 2){
-        //cout << "senderCounter: " << senderCounter << endl;
-        //cout << "src sock: " << srcSock << endl;
-        //cout << endl;
+        cout << "senderCounter: " << senderCounter << endl;
+        cout << "src sock: " << srcSock << endl;
+        cout << endl;
         string reply = readMessage(srcSock);
 
         send(destSock, reply.c_str(), reply.length(), 0);
@@ -166,13 +181,16 @@ void threadDataHandler(int srcSock, int destSock, string srcAddress, string dest
     }
     
     string reply;
-    //receiver to sender
+    //destination to source
     while(receiverCounter < 3){
+
+        cout << "dest Counter: " << receiverCounter << endl;
+        cout << "dest sock: " << destSock << endl;
 
         if (receiverCounter == 0){
             reply = readMessage(destSock);
 
-            reply += "\r\n";
+            //reply += "\r\n";
 
         } else if(receiverCounter == 1){ // receive file size
             
@@ -180,13 +198,13 @@ void threadDataHandler(int srcSock, int destSock, string srcAddress, string dest
 
             fileSize = stoi(reply);
 
-            reply += "\r\n";
+            //reply += "\r\n";
 
         } else if(receiverCounter == 2){ // read file chunks
             reply = readFileChunks(destSock, fileSize);
         }
 
-        send(destSock, reply.c_str(), reply.length(), 0);
+        send(srcSock, reply.c_str(), reply.length(), 0);
 
         receiverCounter++;
     }
@@ -195,22 +213,22 @@ void threadDataHandler(int srcSock, int destSock, string srcAddress, string dest
 
 }
 
-void bridging(string srcAddress, string destAddress){
+void bridging(string srcAddress_port, string destAddress_port){
 
-    init_bridging(srcAddress, destAddress);
+    init_bridging(srcAddress_port, destAddress_port);
 
     int srcSock, destSock;
     //Thread handler of srcSock and destSock
-    srcSock = ip_sock_mapping[srcAddress];
-    destSock = ip_sock_mapping[destAddress];
+    srcSock = ip_sock_mapping[srcAddress_port];
+    destSock = ip_sock_mapping[destAddress_port];
 
-    cout << "mapping src sock" << srcAddress << endl;
-    cout << "mapping dest sock" << destAddress << endl;
+    cout << "mapping src sock" << srcAddress_port << endl;
+    cout << "mapping dest sock" << destAddress_port << endl;
     cout << endl;
 
-    thread bridging(threadDataHandler, srcSock, destSock, srcAddress, destAddress);
+    thread bridge(threadDataHandler, srcSock, destSock, srcAddress_port, destAddress_port);
 
-    bridging.detach();
+    bridge.detach();
 
 }
 
@@ -248,6 +266,7 @@ void establishConnection(int sock, string clientAddress, int portNum){
     };
 
     string code = result[0];
+    cout << "msg: " << message <<endl;
 
     if(code == "1"){
         request_mapping(response, clientAddress, portNum, sock);
@@ -261,8 +280,11 @@ void establishConnection(int sock, string clientAddress, int portNum){
         string destAddress = result[2];
 
         if(request_bridging(response, srcAddress, destAddress) == 1){
+            bridging( srcAddress,  destAddress);
 
             send(sock, response.c_str(), response.length(), 0);
+
+            cout << "handleNewConnection:" << response << endl;
 
         } else{
 
@@ -297,10 +319,18 @@ int main(int argc, char const *argv[])
         // listen for incoming connections
         cnxnSock = accept(serverSock,(struct sockaddr*)&clientAddress,&sosize);
         cout << "connected: " << inet_ntoa(clientAddress.sin_addr) << endl;
+
+        
+        int reuse = 1;
+        if (setsockopt(cnxnSock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
+            cout << "setsockopt(SO_REUSEADDR) failed" << endl;
+
+        if (setsockopt(cnxnSock, SOL_SOCKET, SO_REUSEPORT, (const char*)&reuse, sizeof(reuse)) < 0)
+            cout << "setsockopt(SO_REUSEPORT) failed" << endl;
         
         ip_address = inet_ntoa(clientAddress.sin_addr);
         portNum = clientAddress.sin_port;
-
+        cout << "main sock" << cnxnSock << endl;
         thread handleNewConnection(establishConnection, cnxnSock, ip_address, portNum);
         handleNewConnection.detach();
     }

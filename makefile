@@ -1,4 +1,4 @@
-all:	tracker client stunserver P2PClient.o P2PDB.o TCPClient.o TCPTracker.o
+all:	tracker client TURNServer P2PClient.o P2PDB.o TCPClient.o TCPTracker.o
 
 tracker: P2PDB.o TCPTracker.o 
 	g++ -o tracker P2PDB.o TCPTracker.o -std=c++11 -pthread
@@ -18,9 +18,12 @@ TCPClient.o: TCPClient.cpp
 TCPTracker.o: TCPTracker.cpp
 	g++ -c TCPTracker.cpp -std=c++11 -pthread
 
-stunserver: stunserver.cpp
-	g++ -o stunserver stunserver.cpp -std=c++11 -pthread
+TURNServer: TURNServer.cpp
+	g++ -o TURNServer TURNServer.cpp -std=c++11 -pthread
 
 clean:
-	rm -f client tracker stunserver P2PClient.o P2PDB.o TCPClient.o TCPTracker.o 
+	rm -f client tracker TURNServer P2PClient.o P2PDB.o TCPClient.o TCPTracker.o 
+
+cleanTracker:
+	rm -f tracker TURNServer
 
