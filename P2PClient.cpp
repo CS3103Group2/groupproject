@@ -406,19 +406,24 @@ bool senddata(int sock, void *buf, int buflen)
 {
     unsigned char *pbuf = (unsigned char *) buf;
 
-    while (buflen > 0)
-    {
-        int num = send(sock, pbuf, buflen, 0);
-        if (num == -1)
-        {
-            return false;
-        }
+    string data(reinterpret_cast<char*>(pbuf));
 
-        pbuf += num;
-        buflen -= num;
+    cout << data << endl;
+    if (!persistentClient.send_data(data)) {
+        cout << "CANT SEND DATA" << endl;
+        return false;
     }
-
-
+    // while (buflen > 0)
+    // {
+    //     int num = send(sock, pbuf, buflen, 0);
+    //     if (num == -1)
+    //     {
+    //         return false;
+    //     }
+    //
+    //     pbuf += num;
+    //     buflen -= num;
+    // }
     return true;
 }
 
@@ -462,20 +467,18 @@ void handleDownloadRequestFromPeer(int sock){
 
     int bytesRecved;
     char buffer[DEFAULT_CHUNK_SIZE];
+    string reply;
 
     while (1){
-        if ((bytesRecved = recv(sock, buffer, DEFAULT_CHUNK_SIZE, 0)) <= 0){
-            break;
-        }
-        buffer[bytesRecved] = '\0';
-        cout << "Incoming client connecting to me" << endl;
-        cout << "Received :" << buffer << endl;
-        string message(buffer);
+        cout << "listening" << endl;
+        reply = persistentClient.read();
+
+        cout << "RECEIVED : " + reply  << endl;
         string response;
 
         regex ws_re("\\s+");
         vector<string> result{
-            sregex_token_iterator(message.begin(), message.end(), ws_re, -1), {}
+            sregex_token_iterator(reply.begin(), reply.end(), ws_re, -1), {}
         };
 
         FILE *filehandle = fopen((result[0] + "_chunks/" + result[1]).c_str(), "rb");
@@ -483,12 +486,11 @@ void handleDownloadRequestFromPeer(int sock){
         {
             cout << "RESPONSE: 1" << endl;
             response = "1\r\n";
-            send(sock, response.c_str(), response.length(), 0);
-
+            persistentClient.send_data(response);
 
             response = to_string(fsizeof_full(filehandle)) + "\n";
             cout << "SEND FILESIZE: " << response << endl;
-            send(sock, response.c_str(), response.length(), 0);
+            persistentClient.send_data(response);
 
             sendfile(sock, filehandle);
             cout << "FILESENT" << endl;
@@ -504,8 +506,6 @@ void handleDownloadRequestFromPeer(int sock){
         }
     }
     cout << "FILE CLOSE" << endl;
-    close(sock);
-    cout << "SOCK CLOSE" << endl;
 	return;
 }
 
@@ -787,10 +787,12 @@ int main()
         // prctl(PR_SET_PDEATHSIG, SIGKILL);
 
         while(1){
+            cout << "IM RUNNING" <<endl;
             reply = persistentClient.read();
-            if(reply == "0"){ //keep-alive packet
+            cout << reply << endl;
+            if(reply == "0\r\n"){ //keep-alive packet
                 //do nothing
-            } else if (reply == "1"){
+            } else if (reply == "1\r\n"){
                 handleDownloadRequestFromPeer(cnxnSock);
             }
         }
