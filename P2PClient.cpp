@@ -500,7 +500,7 @@ void handleDownloadRequestFromPeer(int sock){
         } else {
             cout << "RESPONSE: 0" << endl;
             response = "0\r\n";
-            send(sock, response.c_str(), response.length(), 0);
+            persistentClient.send_data(response);
             fclose(filehandle);
             break;
         }
