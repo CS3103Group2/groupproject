@@ -149,18 +149,15 @@ int connectToClient(string peer_ip_addr)
     request = "2 " + my_public_ipaddr + " " + peer_ip_addr + "\r\n";
     turn_connection.send_data(request);
     reply = turn_connection.read();
-    for(i = 0; i < 2; i++){
-        if(reply == "1"){
-            cout << "Access granted by TURN to connect to " << peer_ip_addr << endl;
-            turn_connection.exit();
-            return sock;
-        } else {
-            sleep(rand() % 5);
-            continue;
-        }
+    cout << reply << endl;
+    if(reply == "1\r\n"){
+        cout << "Access granted by TURN to connect to " << peer_ip_addr << endl;
+        turn_connection.exit();
+        return sock;
     }
+
     turn_connection.exit();
-    return  -1;
+    return -1;
 
 }
 
@@ -328,8 +325,8 @@ void downloadChunkFromPeer(string filename){
     }
 
     persistentClient.send_data("1\r\n");
+    persistentClient.send_data(filename + " " + to_string(chunkid) + "\r\n");
     cout << "Sending : " + filename + " " + to_string(chunkid) << endl;
-    persistentClient.send_data(filename + " " + to_string(chunkid));
     reply = persistentClient.read();
 
     if(reply[0] == '0') {
