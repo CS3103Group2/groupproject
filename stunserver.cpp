@@ -32,29 +32,53 @@ unordered_map <string, int>::iterator it;
 
 IPADDR_MAP ip_available, ip_unavailable, ip_sock_mapping;
 
-void request_mapping(string &response, string clientAddress_port, int sock){
+mutex mutx;
 
-    string delimiter = ":";
-    //extract client IP Address
-    string clientAddress = clientAddress_port.substr(0, clientAddress_port.find(delimiter));
+void request_mapping(string &response, string clientAddress, int portNum, int sock){
 
-    // Insert <ip address, socket> mapping to map whenever receive connection
-    ip_sock_mapping.insert((pair<string,int>) make_pair(clientAddress_port, sock));
-
-	// response: ipAddress\r\n
+    string ip_address_port = clientAddress + ":" + to_string(portNum);
+    // Insert <ip address:port, socket> mapping to map whenever receive connection
+    //ip_sock_mapping.insert((pair<string,int>) make_pair(ip_address_port, sock));
+    ip_sock_mapping.insert((pair<string,int>) make_pair(clientAddress, sock));
+    cout << "sock: " << sock << endl;
+	
+    // response: ipAddress\r\n
 	response = clientAddress + "\r\n";
 }
 
 int request_bridging(string &response, string clientAddress, string destinationAddress){
 
 	// Check if client is available and update accordingly
+    int result = -1;
 
 	if (ip_available[destinationAddress] == 0 && ip_available[clientAddress] == 0) {
 		response = "1\r\n";
-        return 1;
+        return result = 1;
 	}
 
-    return -1;
+    return result;
+
+}
+
+string getPortNum(string ip_address_port){
+
+    string delimiter = ":";
+
+    int delimiterPosition = ip_address_port.find(delimiter);
+
+    string portNum = ip_address_port.substr(delimiterPosition + 1, ip_address_port.length());
+
+    return portNum;
+}
+
+string getIPAddress(string ip_address_port){
+
+    string delimiter = ":";
+    int delimiterPosition = ip_address_port.find(delimiter);
+
+    string clientAddress = ip_address_port.substr(0, delimiterPosition);
+
+    return clientAddress;
 
 }
 
@@ -66,15 +90,18 @@ string readMessage(int sock)
 
     while (buffer[0] != '\n') {
         rcvd = recv(sock , buffer , sizeof(buffer) , 0);
+        cout << "rcvd" << rcvd << endl;
         if(rcvd < 0)
         {
-            cout << "receive failed!" << endl;
+            cout << "receive failed! Message" << endl;
             return NULL;
         }
         if (rcvd == 0){
             return reply;
         }
         reply += buffer[0];
+
+        cout << reply << endl;
     }
     return reply;
 }
@@ -86,7 +113,7 @@ string readFileChunks(int sock, int filesize){
     string reply = "";
 
     if((recvd = recv(sock , buffer , filesize, 0) < 0)){
-        cout << "receive failed!" << endl;
+        cout << "receive failed! File" << endl;
     }
 
     reply = buffer;
@@ -95,8 +122,29 @@ string readFileChunks(int sock, int filesize){
 
 }
 
+void init_bridging(string clientAddress, string destinationAddress){
+
+    mutx.lock();
+    ip_available[clientAddress] = 1;
+    ip_available[destinationAddress] = 1;
+    ip_unavailable.insert((pair<string,int>) make_pair(clientAddress, 0));
+    ip_unavailable.insert((pair<string,int>) make_pair(destinationAddress, 0));
+    mutx.unlock();
+}
+
+void end_bridging(string clientAddress, string destAddress){
+
+    mutx.lock();
+    ip_available[clientAddress] = 0;
+    ip_available[destAddress] = 0;
+
+    ip_unavailable.erase(clientAddress);
+    ip_unavailable.erase(destAddress);
+    mutx.unlock();
+}
+
 //sending info for bridging
-void threadDataHandler(int srcSock, int destSock){
+void threadDataHandler(int srcSock, int destSock, string srcAddress, string destAddress){
 
     int bytesRecved;
     char buffer[MAXBUFFERSIZE];
@@ -107,13 +155,16 @@ void threadDataHandler(int srcSock, int destSock){
 
     //sender to receiver
     while(senderCounter < 2){
-
+        //cout << "senderCounter: " << senderCounter << endl;
+        //cout << "src sock: " << srcSock << endl;
+        //cout << endl;
         string reply = readMessage(srcSock);
 
         send(destSock, reply.c_str(), reply.length(), 0);
 
         senderCounter++;
     }
+    
     string reply;
     //receiver to sender
     while(receiverCounter < 3){
@@ -140,37 +191,56 @@ void threadDataHandler(int srcSock, int destSock){
         receiverCounter++;
     }
 
+    end_bridging(srcAddress, destAddress);
+
 }
 
-void start_bridging(string clientAddress, string destinationAddress){
+void bridging(string srcAddress, string destAddress){
+
+    init_bridging(srcAddress, destAddress);
 
     int srcSock, destSock;
-
-    ip_available[clientAddress] = 1;
-    ip_available[destinationAddress] = 1;
-    ip_unavailable.insert((pair<string,int>) make_pair(clientAddress, 0));
-    ip_unavailable.insert((pair<string,int>) make_pair(destinationAddress, 0));
-
     //Thread handler of srcSock and destSock
-    srcSock = ip_sock_mapping[clientAddress];
-    destSock = ip_sock_mapping[destinationAddress];
+    srcSock = ip_sock_mapping[srcAddress];
+    destSock = ip_sock_mapping[destAddress];
 
-    thread bridging(threadDataHandler, srcSock, destSock);
+    cout << "mapping src sock" << srcAddress << endl;
+    cout << "mapping dest sock" << destAddress << endl;
+    cout << endl;
 
-    bridging.join();
+    thread bridging(threadDataHandler, srcSock, destSock, srcAddress, destAddress);
+
+    bridging.detach();
+
 }
 
-void complete_bridging(string clientAddress, string destAddress){
-    ip_available[clientAddress] = 0;
-    ip_available[destAddress] = 0;
+void keepAlive(int sock){
 
-    ip_unavailable.erase(clientAddress);
-    ip_unavailable.erase(destAddress);
+    string response;
+
+    // Thread handling to keep connection alive
+    while(1){
+
+        response = "0\r\n";
+
+        send(sock, response.c_str(), response.length(), 0);
+        std::this_thread::sleep_for(std::chrono::seconds(30));
+    }
 }
 
-int processIncomingMessage(string message, string &response, string clientAddress_port, int sock){
+void establishConnection(int sock, string clientAddress, int portNum){
 
-    int toCloseSocket = 1; //1 to close, 0 stay open
+    int bytesRecved;
+    char buffer[MAXBUFFERSIZE];
+
+    if ((bytesRecved = recv(sock, buffer, MAXBUFFERSIZE, 0)) <= 0){
+        return;
+    }
+
+    buffer[bytesRecved] = '\0';
+
+    string message(buffer);
+    string response;
 
     regex ws_re("\\s+");
     vector<string> result{
@@ -179,76 +249,28 @@ int processIncomingMessage(string message, string &response, string clientAddres
 
     string code = result[0];
 
-    if (code == "1"){
-        request_mapping(response, clientAddress_port, sock);
-        toCloseSocket = 0;
-    } else if (code == "2"){
-        int value = request_bridging(response, result[1], result[2]);
-
-        if(value == 1){ //succesful in bridging
-            start_bridging(result[1], result[2]);
-            response = "1";
-            toCloseSocket = 0;
-        } else{ 
-            // not successful in connection, 
-            // ignore the bridging, close the socket that request
-            response = "0\r\n";
-            return toCloseSocket = 1;
-        }
-
-        complete_bridging(result[1], result[2]);
-
-    } else{
-        response = "0 Action is not defined!";
-    }
-
-    response += "\r\n";
-
-    return toCloseSocket;
-}
-
-void onStartConnection(int sock, string clientAddress_port){
-
-    int bytesRecved;
-    char buffer[MAXBUFFERSIZE];
-
-    while(1){
-        if ((bytesRecved = recv(sock, buffer, MAXBUFFERSIZE, 0)) <= 0){
-            break;
-        }
-        buffer[bytesRecved] = '\0';
-
-        string msg(buffer);
-        string response;
-        int result = processIncomingMessage(msg, response, clientAddress_port, sock);
+    if(code == "1"){
+        request_mapping(response, clientAddress, portNum, sock);
+        cout << response <<endl;
         send(sock, response.c_str(), response.length(), 0);
+        //thread stayConnected(keepAlive, sock);
+        //stayConnected.detach();
 
-        if(result == 1){
-            break;
+    } else if(code == "2"){
+        string srcAddress = result[1];
+        string destAddress = result[2];
+
+        if(request_bridging(response, srcAddress, destAddress) == 1){
+
+            send(sock, response.c_str(), response.length(), 0);
+
+        } else{
+
+            response = "0\r\n";
+            send(sock, response.c_str(), response.length(), 0);
         }
     }
-
-    close(sock);
-}
-
-void keepAlive(string &response){
-
-    // Thread handling to keep connection alive
-    while(1){
-
-        //ip_available.insert((pair<string,int>) make_pair(clientAddress, 0));
-        for (it = ip_available.begin(); it != ip_available.end(); it++) {
-            if (it->second == 0) {
-                //Send redundant packet as the thread is not in use
-                response = "0\r\n";
-                //get the socket with the given IP address
-                int sock = ip_sock_mapping[it->first];
-                send(sock, response.c_str(), response.length(), 0);
-            }
-        }
-
-        std::this_thread::sleep_for(std::chrono::seconds(30));
-    }
+    
 }
 
 int main(int argc, char const *argv[])
@@ -279,13 +301,11 @@ int main(int argc, char const *argv[])
         ip_address = inet_ntoa(clientAddress.sin_addr);
         portNum = clientAddress.sin_port;
 
-        ip_address_port = ip_address + ":" + std::to_string(portNum);
-        onStartConnection(cnxnSock, ip_address_port);
-
-        //hread onStart(onStartConnection, cnxnSock, ip_address);
-        //onStart.join();
+        thread handleNewConnection(establishConnection, cnxnSock, ip_address, portNum);
+        handleNewConnection.detach();
     }
 
     close(serverSock);
+
     return 0;
 }
