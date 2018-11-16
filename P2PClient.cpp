@@ -97,6 +97,7 @@ int connectToServer(TCPClient &tcp_client)
         count++;
 
         if (count == 5) {
+            sleep(4);
             cout << "\nUnable to connectTo to P2P Server. Do you want to try again? [y/n]";
             cin >> response;
             count = 0;
